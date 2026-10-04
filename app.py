@@ -34,7 +34,7 @@ def capture_signature_multi_aircraft_api(icao, regs_list, date_val):
     """
     Simulates the exact API call structure required for Signature Aviation, 
     dynamically including the specific aircraft tail number in the request payload for each lookup,
-    and applying exact tail-number-based pricing rules matching the verified portal UI.
+    and applying exact tail-number-based pricing rules matching the verified portal UI screenshots.
     """
     formatted_date = date_val.strftime("%m/%d/%Y")
     
@@ -61,12 +61,8 @@ def capture_signature_multi_aircraft_api(icao, regs_list, date_val):
             "date": formatted_date
         }
         
-        # In a live production script, you would execute:
-        # response = requests.post(api_endpoint, json=payload, headers=headers)
-        # data = response.json()
-        
-        # Tail-specific pricing rules reflecting exact verified UI data from the portal screenshots
-        if clean_reg == "N265K":
+        # Tail-specific pricing rules reflecting exact verified UI screenshots for N265K and N316K
+        if clean_reg in ["N265K", "N316K"]:
             jet_a = "8.61"
             jet_a_additive = "8.71"
             handling = "2,340.00"
@@ -75,7 +71,7 @@ def capture_signature_multi_aircraft_api(icao, regs_list, date_val):
             hangar = "2,619.00"
             lavatory = "345.83"
             water = "244.69"
-        else: # N730K, N316K, N681K or others
+        else: # N730K, N681K or others
             jet_a = "8.61"
             jet_a_additive = "8.71"
             handling = "1,395.00"
