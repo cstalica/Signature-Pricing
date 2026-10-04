@@ -54,6 +54,7 @@ def capture_signature_pricing_api(stations_list, aircraft_list, date_val):
     """
     Simulates the exact API call structure required for Signature Aviation, 
     dynamically looping through selected stations and aircraft tails to build the payload.
+    Sets 'Jet A' to N/A and maps the Jet A price to Jet A (w/ additive).
     """
     formatted_date = date_val.strftime("%m/%d/%Y")
     records = []
@@ -82,8 +83,7 @@ def capture_signature_pricing_api(stations_list, aircraft_list, date_val):
             
             # Station and tail-specific rules reflecting verified portal values for FSM vs BUF
             if clean_icao == "FSM":
-                jet_a = "7.69"
-                jet_a_additive = "8.55"
+                jet_a_additive_val = "8.55"
                 handling = "560.00"
                 infrastructure = "26.00"
                 gpu = "114.00"
@@ -91,9 +91,8 @@ def capture_signature_pricing_api(stations_list, aircraft_list, date_val):
                 lavatory = "197.10"
                 water = "92.00"
             else:  # BUF Station Rules
+                jet_a_additive_val = "8.71"
                 if clean_reg in ["N265K", "N316K"]:
-                    jet_a = "8.61"
-                    jet_a_additive = "8.71"
                     handling = "2,340.00"
                     infrastructure = "46.50"
                     gpu = "186.00"
@@ -101,8 +100,6 @@ def capture_signature_pricing_api(stations_list, aircraft_list, date_val):
                     lavatory = "345.83"
                     water = "244.69"
                 else:  # N730K, N681K or others at BUF
-                    jet_a = "8.61"
-                    jet_a_additive = "8.71"
                     handling = "1,395.00"
                     infrastructure = "46.50"
                     gpu = "186.00"
@@ -114,8 +111,8 @@ def capture_signature_pricing_api(stations_list, aircraft_list, date_val):
                 "ICAO": clean_icao,
                 "Aircraft Reg": clean_reg,
                 "Date": formatted_date,
-                "Jet A ($/GLL)": jet_a,
-                "Jet A w/ Additive ($/GLL)": jet_a_additive,
+                "Jet A ($/GLL)": "N/A",
+                "Jet A w/ Additive ($/GLL)": jet_a_additive_val,
                 "Handling Fee ($)": handling,
                 "Infrastructure Fee ($)": infrastructure,
                 "GPU ($)": gpu,
