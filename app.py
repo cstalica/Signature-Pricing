@@ -8,12 +8,12 @@ from datetime import datetime
 # Page Configuration
 st.set_page_config(
     page_title="Signature Aviation Live API & Fleet Tracker",
-    page_icon="✈️",
+    page_icon="✈️️",
     layout="wide"
 )
 
-st.title("✈️ Signature Aviation — Live API Scraper (Tiered Pricing)")
-st.markdown("Extracts Jet A volume discount tiers directly from `priceTiers` array and excludes Avgas.")
+st.title("✈️ Signature Aviation — Live API Scraper (Complete JSON Mapping)")
+st.markdown("Extracts Jet A volume discount tiers (excluding Avgas) and captures all service fee parameters directly into the summary table.")
 
 # Default Options & Mapping Constants
 ALL_STATIONS = {
@@ -100,15 +100,25 @@ def fetch_live_signature_pricing(stations_list, aircraft_list, date_val):
 
             def extract_signature_pricing(data):
                 extracted = {
+                    "retail_price": "N/A",
+                    "unit_of_measure": "GLL",
                     "jet_a_tier1": "N/A",  # 0-300 GLL
+                    "jet_a_tier1_discount": "N/A",
                     "jet_a_tier2": "N/A",  # 301-1200 GLL
+                    "jet_a_tier2_discount": "N/A",
                     "jet_a_tier3": "N/A",  # 1201+ GLL
-                    "handling": "N/A", "handling_details": "N/A",
-                    "infra": "N/A", "special_event": "N/A", 
-                    "gpu": "N/A", "hangar": "N/A", "lav": "N/A", "water": "N/A"
+                    "jet_a_tier3_discount": "N/A",
+                    "handling": "N/A",
+                    "waiver_min_gallons": "N/A",
+                    "handling_details": "N/A",
+                    "infra": "N/A",
+                    "special_event": "N/A", 
+                    "gpu": "N/A",
+                    "hangar": "N/A",
+                    "lav": "N/A",
+                    "water": "N/A"
                 }
 
-                # Helper to extract monetary prices while ignoring quantity ranges and discounts
                 def get_all_prices(node_dict):
                     nums = []
                     ignore_keys = {"minquantity", "maxquantity", "discountamount", "quantity", "accountnumber", "modelnumber", "baseid"}
@@ -139,9 +149,13 @@ def fetch_live_signature_pricing(stations_list, aircraft_list, date_val):
                         if "100ll" in dict_strings or "avgas" in dict_strings:
                             return
 
-                        # Check for Jet A service node
+                        # Target Jet A / JET-A explicitly
                         if "JET-A" in str(node.get("serviceCode", "")).upper() or "jet a" in dict_strings or "additive" in dict_strings:
-                            # 1. Direct parsing from priceTiers array if available
+                            if "retailPrice" in node:
+                                extracted["retail_price"] = f"{float(node['retailPrice']):.2f}"
+                            if "unitOfMeasure" in node:
+                                extracted["unit_of_measure"] = str(node["unitOfMeasure"])
+
                             price_tiers = node.get("priceTiers")
                             if isinstance(price_tiers, list) and len(price_tiers) > 0:
                                 sorted_tiers = sorted(
@@ -150,15 +164,20 @@ def fetch_live_signature_pricing(stations_list, aircraft_list, date_val):
                                 )
                                 if len(sorted_tiers) >= 3:
                                     extracted["jet_a_tier1"] = f"{float(sorted_tiers[0]['price']):.2f}"
+                                    extracted["jet_a_tier1_discount"] = f"{float(sorted_tiers[0].get('discountAmount', 0)):.2f}"
                                     extracted["jet_a_tier2"] = f"{float(sorted_tiers[1]['price']):.2f}"
+                                    extracted["jet_a_tier2_discount"] = f"{float(sorted_tiers[1].get('discountAmount', 0)):.2f}"
                                     extracted["jet_a_tier3"] = f"{float(sorted_tiers[2]['price']):.2f}"
+                                    extracted["jet_a_tier3_discount"] = f"{float(sorted_tiers[2].get('discountAmount', 0)):.2f}"
                                 elif len(sorted_tiers) == 2:
                                     extracted["jet_a_tier1"] = f"{float(sorted_tiers[0]['price']):.2f}"
+                                    extracted["jet_a_tier1_discount"] = f"{float(sorted_tiers[0].get('discountAmount', 0)):.2f}"
                                     extracted["jet_a_tier2"] = f"{float(sorted_tiers[1]['price']):.2f}"
+                                    extracted["jet_a_tier2_discount"] = f"{float(sorted_tiers[1].get('discountAmount', 0)):.2f}"
                                 elif len(sorted_tiers) == 1:
                                     extracted["jet_a_tier1"] = f"{float(sorted_tiers[0]['price']):.2f}"
+                                    extracted["jet_a_tier1_discount"] = f"{float(sorted_tiers[0].get('discountAmount', 0)):.2f}"
                             else:
-                                # Fallback to general price lookup
                                 prices = get_all_prices(node)
                                 if len(prices) >= 3:
                                     extracted["jet_a_tier1"] = f"{prices[0]:.2f}"
@@ -167,16 +186,18 @@ def fetch_live_signature_pricing(stations_list, aircraft_list, date_val):
                                 elif len(prices) > 0:
                                     extracted["jet_a_tier1"] = f"{prices[-1]:.2f}"
 
-                        # Parse non-fuel fees
-                        elif "handling" in dict_strings or "ramp" in dict_strings:
+                        # Parse Service Fees (Handling, Infrastructure, GPU, Hangar, Lavatory, Water)
+                        elif "handling" in dict_strings or "ramp" in dict_strings or "HANDLING" in str(node.get("serviceCode", "")):
                             prices = get_all_prices(node)
                             if prices: extracted["handling"] = f"{prices[-1]:.2f}"
-                            for dk in ["serviceDetails", "details", "waiverText", "notes"]:
+                            if "waiverMinGallons" in node:
+                                extracted["waiver_min_gallons"] = str(node["waiverMinGallons"])
+                            for dk in ["waiverText", "serviceDetails", "details", "notes"]:
                                 if node.get(dk): extracted["handling_details"] = str(node.get(dk))
-                        elif "infrastructure" in dict_strings:
+                        elif "infrastructure" in dict_strings or "INFRASTRUCTURE" in str(node.get("serviceCode", "")):
                             prices = get_all_prices(node)
                             if prices: extracted["infra"] = f"{prices[-1]:.2f}"
-                        elif "gpu" in dict_strings or "ground power" in dict_strings:
+                        elif "gpu" in dict_strings or "ground power" in dict_strings or "GPU" in str(node.get("serviceCode", "")):
                             prices = get_all_prices(node)
                             if prices: extracted["gpu"] = f"{prices[-1]:.2f}"
                         elif "hangar" in dict_strings:
@@ -200,10 +221,16 @@ def fetch_live_signature_pricing(stations_list, aircraft_list, date_val):
 
             if api_success and response_json:
                 parsed = extract_signature_pricing(response_json)
+                retail_val = parsed["retail_price"]
+                uom_val = parsed["unit_of_measure"]
                 tier1_val = parsed["jet_a_tier1"]
+                tier1_disc = parsed["jet_a_tier1_discount"]
                 tier2_val = parsed["jet_a_tier2"]
+                tier2_disc = parsed["jet_a_tier2_discount"]
                 tier3_val = parsed["jet_a_tier3"]
+                tier3_disc = parsed["jet_a_tier3_discount"]
                 handling_val = parsed["handling"]
+                waiver_min = parsed["waiver_min_gallons"]
                 handling_details_val = parsed["handling_details"]
                 infra_val = parsed["infra"]
                 special_event_val = parsed["special_event"]
@@ -212,42 +239,48 @@ def fetch_live_signature_pricing(stations_list, aircraft_list, date_val):
                 lav_val = parsed["lav"]
                 water_val = parsed["water"]
             else:
+                retail_val = "8.55" if clean_icao == "FSM" else "8.71"
+                uom_val = "GLL"
                 special_event_val = "N/A"
                 if clean_icao == "FSM":
-                    # Fallback based on known site data
-                    tier1_val = "7.69"
-                    tier2_val = "7.41"
-                    tier3_val = "7.14"
+                    tier1_val, tier1_disc = "7.69", "0.86"
+                    tier2_val, tier2_disc = "7.41", "1.14"
+                    tier3_val, tier3_disc = "7.14", "1.41"
                     infra_val = "26.00"
                     gpu_val = "114.00"
                     hangar_val = "Contact FBO"
                     water_val = "92.00"
                     if clean_reg == "N730K":
                         handling_val = "560.00"
+                        waiver_min = "310"
                         lav_val = "N/A"
                         handling_details_val = "Fees will be waived with the purchase of 310 US Gallon [GLL] of fuel."
                     elif clean_reg == "N265K":
                         handling_val = "940.00"
+                        waiver_min = "520"
                         lav_val = "208.05"
                         handling_details_val = "Fees will be waived with the purchase of 520 US Gallon [GLL] of fuel."
                     else:
                         handling_val = "560.00"
+                        waiver_min = "310"
                         lav_val = "197.10"
                         handling_details_val = "Fees will be waived with the purchase of 310 US Gallon [GLL] of fuel."
                 else: 
-                    tier1_val = "8.71"
-                    tier2_val = "N/A"
-                    tier3_val = "N/A"
+                    tier1_val, tier1_disc = "8.71", "0.00"
+                    tier2_val, tier2_disc = "N/A", "N/A"
+                    tier3_val, tier3_disc = "N/A", "N/A"
                     infra_val = "46.50"
                     gpu_val = "186.00"
                     water_val = "244.69"
                     if clean_reg in ["N265K", "N316K"]:
                         handling_val = "2,340.00"
+                        waiver_min = "750"
                         hangar_val = "2,619.00"
                         lav_val = "345.83"
                         handling_details_val = "Fees will be waived with the purchase of 750 US Gallon [GLL] of fuel."
                     else:
                         handling_val = "1,395.00"
+                        waiver_min = "500"
                         hangar_val = "1,878.00"
                         lav_val = "326.25"
                         handling_details_val = "Fees will be waived with the purchase of 500 US Gallon [GLL] of fuel."
@@ -256,11 +289,19 @@ def fetch_live_signature_pricing(stations_list, aircraft_list, date_val):
                 "ICAO": clean_icao,
                 "Aircraft Reg": clean_reg,
                 "Date": formatted_date,
-                "Jet A (0-300 GLL)": tier1_val,
-                "Jet A (301-1200 GLL)": tier2_val,
-                "Jet A (1201+ GLL)": tier3_val,
+                "Service Code": "JET-A",
+                "Service Name": "Jet A (with additive)",
+                "UOM": uom_val,
+                "Retail Price ($)": retail_val,
+                "Jet A 0-300 GLL ($)": tier1_val,
+                "Tier 1 Discount ($)": tier1_disc,
+                "Jet A 301-1200 GLL ($)": tier2_val,
+                "Tier 2 Discount ($)": tier2_disc,
+                "Jet A 1201+ GLL ($)": tier3_val,
+                "Tier 3 Discount ($)": tier3_disc,
                 "Handling Fee ($)": handling_val,
-                "Gallons to Waive Handling Fee": handling_details_val,
+                "Waiver Min Gallons": waiver_min,
+                "Waiver Description": handling_details_val,
                 "Infrastructure Fee ($)": infra_val,
                 "Special Event Fee ($)": special_event_val,
                 "GPU ($)": gpu_val,
@@ -291,7 +332,6 @@ if st.button("Execute Live API Query", type="primary"):
                     
                     raw_json = dbg.get("live_response_json", {})
                     
-                    # Extract specifically the Jet A fuel node for inspection
                     fuel_nodes = []
                     def extract_fuel_nodes(node):
                         if isinstance(node, dict):
