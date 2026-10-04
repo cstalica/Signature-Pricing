@@ -23,7 +23,7 @@ ALL_STATIONS = {
 }
 DEFAULT_FLEET = ["N730K", "N265K", "N316K", "N681K"]
 
-# Fixed Account Credentials from your sample endpoint
+# Fixed Account Credentials
 ACCOUNT_NUMBER = "3951"
 ACCOUNT_ID = "1cdf46c1-ee12-df11-b019-005056a16799"
 MODEL_NUMBER = "0"
@@ -31,7 +31,6 @@ MODEL_NUMBER = "0"
 # Sidebar Controls
 st.sidebar.header("Parameters & Configuration")
 
-# Airport Selection Mode
 station_mode = st.sidebar.radio("Airport Selection Mode", ["Single Airport", "All Airports"])
 if station_mode == "Single Airport":
     selected_station = st.sidebar.selectbox("Select Airport ICAO", list(ALL_STATIONS.keys()), index=1)
@@ -39,7 +38,6 @@ if station_mode == "Single Airport":
 else:
     stations_to_query = list(ALL_STATIONS.keys())
 
-# Aircraft Selection Mode
 aircraft_mode = st.sidebar.radio("Aircraft Selection Mode", ["Single Aircraft", "All Aircraft (Fleet)"])
 if aircraft_mode == "Single Aircraft":
     selected_aircraft = st.sidebar.selectbox("Select Aircraft Registration", DEFAULT_FLEET, index=0)
@@ -105,7 +103,6 @@ def fetch_live_signature_pricing(stations_list, aircraft_list, date_val):
                 status_code = 500
                 response_json = {"error": str(e)}
 
-            # Targeted extractor looking through list collections and dictionaries for matching fuel/fee items
             def parse_signature_json(data):
                 extracted = {
                     "jet_a": "N/A",
@@ -122,15 +119,15 @@ def fetch_live_signature_pricing(stations_list, aircraft_list, date_val):
 
                 def traverse(node):
                     if isinstance(node, dict):
-                        # Identify name fields
                         name_str = " ".join([
                             str(node.get("name", "")),
                             str(node.get("description", "")),
                             str(node.get("productName", "")),
-                            str(node.get("serviceName", ""))
+                            str(node.get("serviceName", "")),
+                            str(node.get("fuelType", "")),
+                            str(node.get("productCode", ""))
                         ]).lower()
 
-                        # Extract price value
                         price_val = None
                         for pk in ["customerPrice", "retailPrice", "price", "unitPrice", "amount", "fee", "rate"]:
                             if node.get(pk) is not None:
@@ -138,13 +135,12 @@ def fetch_live_signature_pricing(stations_list, aircraft_list, date_val):
                                 break
 
                         if price_val:
-                            if "jet a (with additive)" in name_str or "additive" in name_str:
+                            if "additive" in name_str or "jet a (with additive)" in name_str:
                                 extracted["jet_a_additive"] = price_val
-                            elif "jet a" in name_str and "avgas" not in name_str:
+                            elif "jet a" in name_str or "jeta" in name_str:
                                 extracted["jet_a"] = price_val
                             elif "handling" in name_str or "ramp fee" in name_str:
                                 extracted["handling"] = price_val
-                                # Check for waiver details
                                 for dk in ["serviceDetails", "details", "waiverText", "notes"]:
                                     if node.get(dk):
                                         extracted["handling_details"] = str(node.get(dk))
@@ -161,7 +157,6 @@ def fetch_live_signature_pricing(stations_list, aircraft_list, date_val):
                             elif "water" in name_str:
                                 extracted["water"] = price_val
 
-                        # Continue traversing children
                         for val in node.values():
                             traverse(val)
                     elif isinstance(node, list):
@@ -177,10 +172,11 @@ def fetch_live_signature_pricing(stations_list, aircraft_list, date_val):
                 jet_a_val = parsed["jet_a"]
                 jet_a_additive_val = parsed["jet_a_additive"]
                 
-                if jet_a_val == "N/A" and jet_a_additive_val != "N/A":
-                    jet_a_val = jet_a_additive_val
-                elif jet_a_additive_val == "N/A" and jet_a_val != "N/A":
+                # If either field was found, map them across so both reflect the current rate
+                if jet_a_val != "N/A" and jet_a_additive_val == "N/A":
                     jet_a_additive_val = jet_a_val
+                elif jet_a_additive_val != "N/A" and jet_a_val == "N/A":
+                    jet_a_val = jet_a_additive_val
 
                 handling_val = parsed["handling"]
                 handling_details_val = parsed["handling_details"]
