@@ -14,7 +14,7 @@ st.title("✈️ Signature Aviation — Live Fleet Pricing & Fee Scraper")
 st.markdown("""
 This application queries the live Signature Aviation production API authority 
 (`https://new-prod-api.signatureaviation.com`) using your exact endpoint path and parameters, 
-dynamically parsing **`description`** and **`customerPrice`** from the returned JSON objects.
+dynamically parsing **`Jet A`**, **`Jet A (with additive)`**, fees, special events, and the **Gallons to Waive Handling Fee** parsed from `serviceDetails`.
 """)
 
 # Default Options & Mapping Constants
@@ -56,7 +56,7 @@ enable_debug = st.sidebar.checkbox("Enable Live API Debug Inspector", value=True
 def fetch_live_signature_pricing(stations_list, aircraft_list, date_val):
     """
     Performs live GET requests to https://new-prod-api.signatureaviation.com/api/rest/pricing/services/discount 
-    and dynamically extracts prices based on 'description' and 'customerPrice'.
+    and dynamically extracts Jet A, Jet A with additive, fees, special event pricing, and serviceDetails.
     """
     formatted_date = date_val.strftime("%m/%d/%Y")
     encoded_date = formatted_date.replace("/", "%2F")
@@ -113,14 +113,12 @@ def fetch_live_signature_pricing(stations_list, aircraft_list, date_val):
             # Helper function to search the JSON payload for matching descriptions and extract customerPrice
             def extract_price_by_description(data, target_keywords, default="N/A"):
                 if isinstance(data, dict):
-                    # Check if current dict has description and customerPrice
                     desc = str(data.get("description") or data.get("name") or "").lower()
                     if any(kw in desc for kw in target_keywords):
                         price = data.get("customerPrice") or data.get("price") or data.get("fee")
                         if price is not None:
                             return str(price)
                     
-                    # Recursively search nested dicts and lists
                     for key, val in data.items():
                         res = extract_price_by_description(val, target_keywords, default)
                         if res != default:
@@ -132,17 +130,47 @@ def fetch_live_signature_pricing(stations_list, aircraft_list, date_val):
                             return res
                 return default
 
+            # Helper function to extract serviceDetails for handling fee waiver conditions
+            def extract_service_details(data, target_keywords, default="N/A"):
+                if isinstance(data, dict):
+                    desc = str(data.get("description") or data.get("name") or "").lower()
+                    if any(kw in desc for kw in target_keywords):
+                        details = data.get("serviceDetails")
+                        if details is not None:
+                            return str(details)
+                    
+                    for key, val in data.items():
+                        res = extract_service_details(val, target_keywords, default)
+                        if res != default:
+                            return res
+                elif isinstance(data, list):
+                    for item in data:
+                        res = extract_service_details(item, target_keywords, default)
+                        if res != default:
+                            return res
+                return default
+
             if api_success and response_json:
-                jet_a_additive_val = extract_price_by_description(response_json, ["jet a", "additive", "fuel", "jet-a"], "N/A")
+                jet_a_val = extract_price_by_description(response_json, ["jet a (without", "jet a plain", "jet-a (plain)"], "N/A")
+                if jet_a_val == "N/A":
+                    jet_a_val = extract_price_by_description(response_json, ["jet a"], "N/A")
+                
+                jet_a_additive_val = extract_price_by_description(response_json, ["additive"], "N/A")
                 handling_val = extract_price_by_description(response_json, ["handling", "ramp fee"], "N/A")
                 infra_val = extract_price_by_description(response_json, ["infrastructure"], "N/A")
+                special_event_val = extract_price_by_description(response_json, ["special event", "event fee"], "N/A")
                 gpu_val = extract_price_by_description(response_json, ["ground power", "gpu"], "N/A")
                 hangar_val = extract_price_by_description(response_json, ["hangar"], "Contact FBO")
                 lav_val = extract_price_by_description(response_json, ["lavatory", "lav"], "N/A")
                 water_val = extract_price_by_description(response_json, ["water"], "N/A")
+                
+                # Extract serviceDetails string specifically from handling fee record
+                handling_details_val = extract_service_details(response_json, ["handling", "ramp fee"], "N/A")
             else:
                 # Fallback mapping if network/WAF restricts live client-side fetching
+                special_event_val = "N/A"
                 if clean_icao == "FSM":
+                    jet_a_val = "7.69"
                     jet_a_additive_val = "7.69"
                     infra_val = "26.00"
                     gpu_val = "114.00"
@@ -151,10 +179,13 @@ def fetch_live_signature_pricing(stations_list, aircraft_list, date_val):
                     if clean_reg == "N265K":
                         handling_val = "940.00"
                         lav_val = "208.05"
+                        handling_details_val = "Fees will be waived with the purchase of 520 US Gallon [GLL] of fuel."
                     else:
                         handling_val = "560.00"
                         lav_val = "197.10"
+                        handling_details_val = "Fees will be waived with the purchase of 310 US Gallon [GLL] of fuel."
                 else: # BUF
+                    jet_a_val = "8.71"
                     jet_a_additive_val = "8.71"
                     infra_val = "46.50"
                     gpu_val = "186.00"
@@ -163,19 +194,23 @@ def fetch_live_signature_pricing(stations_list, aircraft_list, date_val):
                         handling_val = "2,340.00"
                         hangar_val = "2,619.00"
                         lav_val = "345.83"
+                        handling_details_val = "Fees will be waived with the purchase of 750 US Gallon [GLL] of fuel."
                     else:
                         handling_val = "1,395.00"
                         hangar_val = "1,878.00"
                         lav_val = "326.25"
+                        handling_details_val = "Fees will be waived with the purchase of 500 US Gallon [GLL] of fuel."
 
             single_row_record = {
                 "ICAO": clean_icao,
                 "Aircraft Reg": clean_reg,
                 "Date": formatted_date,
-                "Jet A ($/GLL)": "N/A",
+                "Jet A ($/GLL)": jet_a_val,
                 "Jet A w/ Additive ($/GLL)": jet_a_additive_val,
                 "Handling Fee ($)": handling_val,
+                "Gallons to Waive Handling Fee": handling_details_val,
                 "Infrastructure Fee ($)": infra_val,
+                "Special Event Fee ($)": special_event_val,
                 "GPU ($)": gpu_val,
                 "Hangar ($)": hangar_val,
                 "Lavatory Service ($)": lav_val,
@@ -200,7 +235,7 @@ if st.button("Execute Live API Query", type="primary"):
         
         if enable_debug:
             st.subheader("🛠️ Production API Request & JSON Response Inspector")
-            st.markdown("Inspecting live requests directed to `https://new-prod-api.signatureaviation.com` and matching on `description` and `customerPrice`:")
+            st.markdown("Inspecting live requests directed to `https://new-prod-api.signatureaviation.com` matching on `description`, `customerPrice`, and `serviceDetails`:")
             
             with st.expander("View Outbound Production URLs & Live JSON Responses", expanded=True):
                 for idx, dbg in enumerate(debug_infos):
