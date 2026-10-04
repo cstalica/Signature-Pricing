@@ -105,65 +105,86 @@ def fetch_live_signature_pricing(stations_list, aircraft_list, date_val):
                 status_code = 500
                 response_json = {"error": str(e)}
 
-            # Comprehensive extractor that scans any dictionary or list structure for keywords and grabs price fields
-            def smart_extract(data, target_keywords, is_details=False):
-                if isinstance(data, dict):
-                    # Create a combined text search string from all descriptive fields
-                    text_blob = " ".join([
-                        str(data.get("description", "")),
-                        str(data.get("name", "")),
-                        str(data.get("fuelType", "")),
-                        str(data.get("productName", "")),
-                        str(data.get("serviceName", "")),
-                        str(data.get("productCode", ""))
+            # Robust recursive search function targeting keys and values inside dictionaries and lists
+            def deep_find(obj, target_keywords, price_keys):
+                if isinstance(obj, dict):
+                    # Check text fields in this dictionary
+                    combined_text = " ".join([
+                        str(obj.get("name", "")),
+                        str(obj.get("description", "")),
+                        str(obj.get("productName", "")),
+                        str(obj.get("serviceName", "")),
+                        str(obj.get("fuelType", "")),
+                        str(obj.get("code", ""))
                     ]).lower()
                     
-                    if any(kw in text_blob for kw in target_keywords):
-                        if is_details:
-                            details = data.get("serviceDetails") or data.get("details") or data.get("waiverText")
-                            if details is not None:
-                                return str(details)
-                        else:
-                            for p_key in ["retailPrice", "customerPrice", "price", "fee", "unitPrice", "amount", "rate"]:
-                                val = data.get(p_key)
-                                if val is not None:
-                                    return str(val)
-                    
-                    # Recursively search nested dictionaries
-                    for v in data.values():
-                        res = smart_extract(v, target_keywords, is_details)
+                    if any(kw in combined_text for kw in target_keywords):
+                        for pk in price_keys:
+                            val = obj.get(pk)
+                            if val is not None and str(val).strip() != "":
+                                return str(val)
+                                
+                    # Recurse through all dictionary values
+                    for v in obj.values():
+                        res = deep_find(v, target_keywords, price_keys)
                         if res != "N/A":
                             return res
-                elif isinstance(data, list):
-                    for item in data:
-                        res = smart_extract(item, target_keywords, is_details)
+                elif isinstance(obj, list):
+                    for item in obj:
+                        res = deep_find(item, target_keywords, price_keys)
+                        if res != "N/A":
+                            return res
+                return "N/A"
+
+            def deep_find_details(obj, target_keywords):
+                if isinstance(obj, dict):
+                    combined_text = " ".join([
+                        str(obj.get("name", "")),
+                        str(obj.get("description", ""))
+                    ]).lower()
+                    
+                    if any(kw in combined_text for kw in target_keywords):
+                        for dk in ["serviceDetails", "details", "waiverText", "notes"]:
+                            val = obj.get(dk)
+                            if val is not None and str(val).strip() != "":
+                                return str(val)
+                                
+                    for v in obj.values():
+                        res = deep_find_details(v, target_keywords)
+                        if res != "N/A":
+                            return res
+                elif isinstance(obj, list):
+                    for item in obj:
+                        res = deep_find_details(item, target_keywords)
                         if res != "N/A":
                             return res
                 return "N/A"
 
             if api_success and response_json:
-                jet_a_val = smart_extract(response_json, ["jet a (without", "jet-a (plain)", "jet a plain", "jet a base"])
-                if jet_a_val == "N/A":
-                    jet_a_val = smart_extract(response_json, ["jet a"])
+                price_fields_pool = ["retailPrice", "customerPrice", "price", "unitPrice", "amount", "rate", "fee"]
                 
-                jet_a_additive_val = smart_extract(response_json, ["additive", "jet a w/ additive", "jet a with additive"])
+                # Search for Jet A variants
+                jet_a_additive_val = deep_find(response_json, ["additive", "jet a with additive"], price_fields_pool)
+                jet_a_val = deep_find(response_json, ["jet a", "jet-a"], price_fields_pool)
                 
                 if jet_a_val == "N/A" and jet_a_additive_val != "N/A":
                     jet_a_val = jet_a_additive_val
+                elif jet_a_additive_val == "N/A" and jet_a_val != "N/A":
+                    jet_a_additive_val = jet_a_val
 
-                handling_val = smart_extract(response_json, ["handling", "ramp fee"])
-                infra_val = smart_extract(response_json, ["infrastructure"])
-                special_event_val = smart_extract(response_json, ["special event", "event fee"])
-                gpu_val = smart_extract(response_json, ["ground power", "gpu"])
+                handling_val = deep_find(response_json, ["handling", "ramp fee"], price_fields_pool)
+                infra_val = deep_find(response_json, ["infrastructure"], price_fields_pool)
+                special_event_val = deep_find(response_json, ["special event", "event fee"], price_fields_pool)
+                gpu_val = deep_find(response_json, ["ground power", "gpu"], price_fields_pool)
                 
-                hangar_val = smart_extract(response_json, ["hangar"])
+                hangar_val = deep_find(response_json, ["hangar"], price_fields_pool)
                 if hangar_val == "N/A":
                     hangar_val = "Contact FBO"
                     
-                lav_val = smart_extract(response_json, ["lavatory", "lav"])
-                water_val = smart_extract(response_json, ["water"])
+                lav_val = deep_find(response_json, ["lavatory", "lav"], price_fields_pool)
+                water_val = deep_find(response_json, ["water"], price_fields_pool)
                 
-                handling_details_val = smart_extract(response_json, ["handling", "ramp fee"], is_details=True)
+                handling_details_val = deep_find_details(response_json, ["handling", "ramp fee"])
             else:
                 special_event_val = "N/A"
                 if clean_icao == "FSM":
