@@ -11,7 +11,7 @@ st.set_page_config(
     layout="wide"
 )
 
-st.title("✈️ Signature Aviation — Live API Scraper (Direct Schema Parser)")
+st.title("✈️ Signature Aviation — Live API Scraper & JSON Exporter")
 st.markdown("Extracts Jet A volume discount tiers directly from Signature's `fuelPricing` and `serviceFees` schema objects while excluding Avgas.")
 
 # Default Options & Mapping Constants
@@ -344,24 +344,58 @@ if st.button("Execute Live API Query", type="primary"):
     with st.spinner("Processing API Data..."):
         records, debug_infos = fetch_live_signature_pricing(stations_to_query, aircraft_to_query, selected_date)
         
-        if enable_debug:
-            st.subheader("🛠️ Debug Inspector — Isolated Fuel & Full Payload")
-            with st.expander("View Outbound Production URLs & Responses", expanded=True):
-                for idx, dbg in enumerate(debug_infos):
-                    st.markdown(f"**Request #{idx+1} — {dbg['station']} | {dbg['registration']} | HTTP {dbg['status_code']}**")
-                    
-                    raw_json = dbg.get("live_response_json", {})
-                    
-                    col1, col2 = st.columns(2)
-                    with col1:
-                        st.markdown("**Fuel Pricing JSON Array (`fuelPricing`):**")
-                        if isinstance(raw_json, dict) and "fuelPricing" in raw_json:
-                            st.json(raw_json["fuelPricing"])
-                        else:
-                            st.info("No explicit `fuelPricing` key found in raw payload.")
-                    with col2:
-                        st.markdown("**Full Raw Response Payload:**")
-                        st.json(raw_json)
-                    st.markdown("---")
+        # Save results in session state so download button persists across interactions
+        st.session_state["last_records"] = records
+        st.session_state["last_debug"] = debug_infos
 
-        st.dataframe(pd.DataFrame(records), use_container_width=True)
+# Display data and download option if available in session state
+if "last_records" in st.session_state:
+    records = st.session_state["last_records"]
+    debug_infos = st.session_state["last_debug"]
+
+    if enable_debug:
+        st.subheader("🛠️ Debug Inspector — Isolated Fuel & Full Payload")
+        with st.expander("View Outbound Production URLs & Responses", expanded=False):
+            for idx, dbg in enumerate(debug_infos):
+                st.markdown(f"**Request #{idx+1} — {dbg['station']} | {dbg['registration']} | HTTP {dbg['status_code']}**")
+                
+                raw_json = dbg.get("live_response_json", {})
+                
+                col1, col2 = st.columns(2)
+                with col1:
+                    st.markdown("**Fuel Pricing JSON Array (`fuelPricing`):**")
+                    if isinstance(raw_json, dict) and "fuelPricing" in raw_json:
+                        st.json(raw_json["fuelPricing"])
+                    else:
+                        st.info("No explicit `fuelPricing` key found in raw payload.")
+                with col2:
+                    st.markdown("**Full Raw Response Payload:**")
+                    st.json(raw_json)
+                st.markdown("---")
+
+    st.subheader("📊 Processed Pricing Table")
+    st.dataframe(pd.DataFrame(records), use_container_width=True)
+
+    # JSON Download Options in Sidebar
+    st.sidebar.markdown("---")
+    st.sidebar.subheader("📥 Export Options")
+    
+    # Export full raw responses
+    raw_export_payload = [d.get("live_response_json", {}) for d in debug_infos]
+    raw_json_str = json.dumps(raw_export_payload if len(raw_export_payload) > 1 else raw_export_payload[0], indent=2)
+    
+    st.sidebar.download_button(
+        label="Download Raw API JSON",
+        data=raw_json_str,
+        file_name=f"signature_pricing_raw_{datetime.today().strftime('%Y%m%d')}.json",
+        mime="application/json"
+    )
+
+    # Export processed table records as JSON
+    table_json_str = json.dumps(records, indent=2)
+    st.sidebar.download_button(
+        label="Download Processed Table JSON",
+        data=table_json_str,
+        file_name=f"signature_pricing_table_{datetime.today().strftime('%Y%m%d')}.json",
+        mime="application/json"
+    )
