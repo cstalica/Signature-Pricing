@@ -83,7 +83,7 @@ def fetch_live_signature_pricing(stations_list, aircraft_list, date_val):
                 "X-Requested-With": "XMLHttpRequest",
                 "Accept": "application/json, text/javascript, */*; q=0.01",
                 "Origin": "https://www.signatureaviation.com",
-                "Referer": "https://www.signatureaviation.com/"
+                "Referer": "url?id=2"
             }
             
             api_success = False
@@ -105,11 +105,17 @@ def fetch_live_signature_pricing(stations_list, aircraft_list, date_val):
                 status_code = 500
                 response_json = {"error": str(e)}
 
-            # Enhanced recursive parser looking into product keys, descriptions, and fuel types
+            # Robust recursive parser checking all text-bearing and price-bearing fields
             def extract_price_by_description(data, target_keywords, default="N/A"):
                 if isinstance(data, dict):
-                    # Check multiple fields where fuel/pricing data typically live
-                    text_blob = f"{data.get('description', '')} {data.get('name', '')} {data.get('fuelType', '')} {data.get('productName', '')}".lower()
+                    # Consolidate all common text fields returned by Signature's product arrays
+                    text_blob = " ".join([
+                        str(data.get("description", "")),
+                        str(data.get("name", "")),
+                        str(data.get("fuelType", "")),
+                        str(data.get("productName", "")),
+                        str(data.get("serviceName", ""))
+                    ]).lower()
                     
                     if any(kw in text_blob for kw in target_keywords):
                         price = (
@@ -135,7 +141,11 @@ def fetch_live_signature_pricing(stations_list, aircraft_list, date_val):
 
             def extract_service_details(data, target_keywords, default="N/A"):
                 if isinstance(data, dict):
-                    text_blob = f"{data.get('description', '')} {data.get('name', '')}".lower()
+                    text_blob = " ".join([
+                        str(data.get("description", "")),
+                        str(data.get("name", ""))
+                    ]).lower()
+                    
                     if any(kw in text_blob for kw in target_keywords):
                         details = data.get("serviceDetails") or data.get("details") or data.get("waiverText")
                         if details is not None:
@@ -153,7 +163,7 @@ def fetch_live_signature_pricing(stations_list, aircraft_list, date_val):
                 return default
 
             if api_success and response_json:
-                # Target precise naming conventions used in Signature fuel response blocks
+                # Specific keyword hierarchy targeting exact Signature product labels
                 jet_a_val = extract_price_by_description(response_json, ["jet a (without", "jet-a (plain)", "jet a plain", "jet a base"], "N/A")
                 if jet_a_val == "N/A":
                     jet_a_val = extract_price_by_description(response_json, ["jet a"], "N/A")
@@ -169,7 +179,7 @@ def fetch_live_signature_pricing(stations_list, aircraft_list, date_val):
                 
                 handling_details_val = extract_service_details(response_json, ["handling", "ramp fee"], "N/A")
             else:
-                # Fallback values if API call fails/blocked
+                # Fallback values if API call is rate-limited or blocked by client-side security
                 special_event_val = "N/A"
                 if clean_icao == "FSM":
                     jet_a_val = "7.69"
