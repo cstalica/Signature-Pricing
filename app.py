@@ -83,7 +83,7 @@ def fetch_live_signature_pricing(stations_list, aircraft_list, date_val):
                 "X-Requested-With": "XMLHttpRequest",
                 "Accept": "application/json, text/javascript, */*; q=0.01",
                 "Origin": "https://www.signatureaviation.com",
-                "Referer": "url?id=2"
+                "Referer": "https://www.signatureaviation.com/"
             }
             
             api_success = False
@@ -105,41 +105,60 @@ def fetch_live_signature_pricing(stations_list, aircraft_list, date_val):
                 status_code = 500
                 response_json = {"error": str(e)}
 
-            # Robust recursive parser checking all text-bearing and price-bearing fields
-            def extract_price_by_description(data, target_keywords, default="N/A"):
+            # Deep structural parser targeting Signature's fuel product dictionaries
+            def extract_fuel_price(data, target_keywords):
                 if isinstance(data, dict):
-                    # Consolidate all common text fields returned by Signature's product arrays
+                    # Check if current dictionary represents a product/service node
                     text_blob = " ".join([
                         str(data.get("description", "")),
                         str(data.get("name", "")),
                         str(data.get("fuelType", "")),
                         str(data.get("productName", "")),
-                        str(data.get("serviceName", ""))
+                        str(data.get("serviceName", "")),
+                        str(data.get("productCode", ""))
                     ]).lower()
                     
                     if any(kw in text_blob for kw in target_keywords):
-                        price = (
-                            data.get("customerPrice") or 
-                            data.get("price") or 
-                            data.get("fee") or 
-                            data.get("unitPrice") or
-                            data.get("retailPrice")
-                        )
-                        if price is not None:
-                            return str(price)
+                        for price_key in ["customerPrice", "price", "fee", "unitPrice", "retailPrice", "amount"]:
+                            if data.get(price_key) is not None:
+                                return str(data.get(price_key))
                     
-                    for key, val in data.items():
-                        res = extract_price_by_description(val, target_keywords, default)
-                        if res != default:
+                    # Recurse deeper into dictionary values
+                    for val in data.values():
+                        res = extract_fuel_price(val, target_keywords)
+                        if res != "N/A":
                             return res
                 elif isinstance(data, list):
                     for item in data:
-                        res = extract_price_by_description(item, target_keywords, default)
-                        if res != default:
+                        res = extract_fuel_price(item, target_keywords)
+                        if res != "N/A":
                             return res
-                return default
+                return "N/A"
 
-            def extract_service_details(data, target_keywords, default="N/A"):
+            def extract_fee_price(data, target_keywords):
+                if isinstance(data, dict):
+                    text_blob = " ".join([
+                        str(data.get("description", "")),
+                        str(data.get("name", ""))
+                    ]).lower()
+                    
+                    if any(kw in text_blob for kw in target_keywords):
+                        for price_key in ["customerPrice", "price", "fee", "unitPrice", "retailPrice", "amount"]:
+                            if data.get(price_key) is not None:
+                                return str(data.get(price_key))
+                    
+                    for val in data.values():
+                        res = extract_fee_price(val, target_keywords)
+                        if res != "N/A":
+                            return res
+                elif isinstance(data, list):
+                    for item in data:
+                        res = extract_fee_price(item, target_keywords)
+                        if res != "N/A":
+                            return res
+                return "N/A"
+
+            def extract_service_details(data, target_keywords):
                 if isinstance(data, dict):
                     text_blob = " ".join([
                         str(data.get("description", "")),
@@ -151,35 +170,39 @@ def fetch_live_signature_pricing(stations_list, aircraft_list, date_val):
                         if details is not None:
                             return str(details)
                     
-                    for key, val in data.items():
-                        res = extract_service_details(val, target_keywords, default)
-                        if res != default:
+                    for val in data.values():
+                        res = extract_service_details(val, target_keywords)
+                        if res != "N/A":
                             return res
                 elif isinstance(data, list):
                     for item in data:
-                        res = extract_service_details(item, target_keywords, default)
-                        if res != default:
+                        res = extract_service_details(item, target_keywords)
+                        if res != "N/A":
                             return res
-                return default
+                return "N/A"
 
             if api_success and response_json:
-                # Specific keyword hierarchy targeting exact Signature product labels
-                jet_a_val = extract_price_by_description(response_json, ["jet a (without", "jet-a (plain)", "jet a plain", "jet a base"], "N/A")
-                if jet_a_val == "N/A":
-                    jet_a_val = extract_price_by_description(response_json, ["jet a"], "N/A")
+                # Target exact fuel product descriptors from the API payload
+                jet_a_val = extract_fuel_price(response_json, ["jet a (without", "jet-a (plain)", "jet a plain", "jet a base", "jet a"])
+                jet_a_additive_val = extract_fuel_price(response_json, ["additive", "jet a w/ additive", "jet a with additive"])
                 
-                jet_a_additive_val = extract_price_by_description(response_json, ["additive", "jet a w/ additive", "jet a with additive"], "N/A")
-                handling_val = extract_price_by_description(response_json, ["handling", "ramp fee"], "N/A")
-                infra_val = extract_price_by_description(response_json, ["infrastructure"], "N/A")
-                special_event_val = extract_price_by_description(response_json, ["special event", "event fee"], "N/A")
-                gpu_val = extract_price_by_description(response_json, ["ground power", "gpu"], "N/A")
-                hangar_val = extract_price_by_description(response_json, ["hangar"], "Contact FBO")
-                lav_val = extract_price_by_description(response_json, ["lavatory", "lav"], "N/A")
-                water_val = extract_price_by_description(response_json, ["water"], "N/A")
+                # Fallback check if plain Jet A shares node with additive
+                if jet_a_val == "N/A" and jet_a_additive_val != "N/A":
+                    jet_a_val = jet_a_additive_val
+
+                handling_val = extract_fee_price(response_json, ["handling", "ramp fee"])
+                infra_val = extract_fee_price(response_json, ["infrastructure"])
+                special_event_val = extract_fee_price(response_json, ["special event", "event fee"])
+                gpu_val = extract_fee_price(response_json, ["ground power", "gpu"])
+                hangar_val = extract_fee_price(response_json, ["hangar"])
+                if hangar_val == "N/A":
+                    hangar_val = "Contact FBO"
+                lav_val = extract_fee_price(response_json, ["lavatory", "lav"])
+                water_val = extract_fee_price(response_json, ["water"])
                 
-                handling_details_val = extract_service_details(response_json, ["handling", "ramp fee"], "N/A")
+                handling_details_val = extract_service_details(response_json, ["handling", "ramp fee"])
             else:
-                # Fallback values if API call is rate-limited or blocked by client-side security
+                # Fallback values if API call fails
                 special_event_val = "N/A"
                 if clean_icao == "FSM":
                     jet_a_val = "7.69"
