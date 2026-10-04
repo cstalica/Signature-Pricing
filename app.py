@@ -13,7 +13,8 @@ st.set_page_config(
 st.title("✈️ Signature Aviation — Live Fleet Pricing & Fee Scraper")
 st.markdown("""
 This application queries the live Signature Aviation production API authority 
-(`https://new-prod-api.signatureaviation.com`) using your exact endpoint path and parameters.
+(`https://new-prod-api.signatureaviation.com`) using your exact endpoint path and parameters, 
+dynamically parsing **`description`** and **`customerPrice`** from the returned JSON objects.
 """)
 
 # Default Options & Mapping Constants
@@ -55,7 +56,7 @@ enable_debug = st.sidebar.checkbox("Enable Live API Debug Inspector", value=True
 def fetch_live_signature_pricing(stations_list, aircraft_list, date_val):
     """
     Performs live GET requests to https://new-prod-api.signatureaviation.com/api/rest/pricing/services/discount 
-    for each selected station and aircraft registration combination.
+    and dynamically extracts prices based on 'description' and 'customerPrice'.
     """
     formatted_date = date_val.strftime("%m/%d/%Y")
     encoded_date = formatted_date.replace("/", "%2F")
@@ -74,7 +75,6 @@ def fetch_live_signature_pricing(stations_list, aircraft_list, date_val):
             if not clean_reg:
                 continue
                 
-            # Construct exact URL using the production authority
             path_endpoint = (
                 f"/api/rest/pricing/services/discount?"
                 f"baseId={base_id}&baseCode={base_code}&pricingDate={encoded_date}&"
@@ -110,37 +110,38 @@ def fetch_live_signature_pricing(stations_list, aircraft_list, date_val):
                 status_code = 500
                 response_json = {"error": str(e)}
 
-            # Dynamic JSON Parser for Signature's fee structure
-            def parse_fee(data, target_names, default="N/A"):
+            # Helper function to search the JSON payload for matching descriptions and extract customerPrice
+            def extract_price_by_description(data, target_keywords, default="N/A"):
                 if isinstance(data, dict):
+                    # Check if current dict has description and customerPrice
+                    desc = str(data.get("description") or data.get("name") or "").lower()
+                    if any(kw in desc for kw in target_keywords):
+                        price = data.get("customerPrice") or data.get("price") or data.get("fee")
+                        if price is not None:
+                            return str(price)
+                    
+                    # Recursively search nested dicts and lists
                     for key, val in data.items():
-                        if isinstance(val, list):
-                            for item in val:
-                                if isinstance(item, dict):
-                                    name_str = str(item.get("name") or item.get("serviceName") or item.get("description") or item.get("title") or "").lower()
-                                    if any(t in name_str for t in target_names):
-                                        return str(item.get("price") or item.get("fee") or item.get("amount") or item.get("rate") or default)
-                        elif isinstance(val, dict):
-                            res = parse_fee(val, target_names, default)
-                            if res != default:
-                                return res
+                        res = extract_price_by_description(val, target_keywords, default)
+                        if res != default:
+                            return res
                 elif isinstance(data, list):
                     for item in data:
-                        res = parse_fee(item, target_names, default)
+                        res = extract_price_by_description(item, target_keywords, default)
                         if res != default:
                             return res
                 return default
 
             if api_success and response_json:
-                jet_a_additive_val = parse_fee(response_json, ["jet a", "additive", "fuel", "jet-a"], "N/A")
-                handling_val = parse_fee(response_json, ["handling", "ramp fee"], "N/A")
-                infra_val = parse_fee(response_json, ["infrastructure"], "N/A")
-                gpu_val = parse_fee(response_json, ["ground power", "gpu"], "N/A")
-                hangar_val = parse_fee(response_json, ["hangar"], "Contact FBO")
-                lav_val = parse_fee(response_json, ["lavatory", "lav"], "N/A")
-                water_val = parse_fee(response_json, ["water"], "N/A")
+                jet_a_additive_val = extract_price_by_description(response_json, ["jet a", "additive", "fuel", "jet-a"], "N/A")
+                handling_val = extract_price_by_description(response_json, ["handling", "ramp fee"], "N/A")
+                infra_val = extract_price_by_description(response_json, ["infrastructure"], "N/A")
+                gpu_val = extract_price_by_description(response_json, ["ground power", "gpu"], "N/A")
+                hangar_val = extract_price_by_description(response_json, ["hangar"], "Contact FBO")
+                lav_val = extract_price_by_description(response_json, ["lavatory", "lav"], "N/A")
+                water_val = extract_price_by_description(response_json, ["water"], "N/A")
             else:
-                # Fallback mapping aligned with verified portal values if CORS/WAF restricts client-side fetching
+                # Fallback mapping if network/WAF restricts live client-side fetching
                 if clean_icao == "FSM":
                     jet_a_additive_val = "7.69"
                     infra_val = "26.00"
@@ -199,7 +200,7 @@ if st.button("Execute Live API Query", type="primary"):
         
         if enable_debug:
             st.subheader("🛠️ Production API Request & JSON Response Inspector")
-            st.markdown("Inspecting live requests directed to `https://new-prod-api.signatureaviation.com`:")
+            st.markdown("Inspecting live requests directed to `https://new-prod-api.signatureaviation.com` and matching on `description` and `customerPrice`:")
             
             with st.expander("View Outbound Production URLs & Live JSON Responses", expanded=True):
                 for idx, dbg in enumerate(debug_infos):
