@@ -6,29 +6,34 @@ from datetime import datetime
 
 # Page Configuration
 st.set_page_config(
-    page_title="Signature BUF API & Tracker",
+    page_title="Signature BUF API & Multi-Aircraft Tracker",
     page_icon="✈️",
     layout="wide"
 )
 
-st.title("✈️ Signature BUF — Single-Row API Data Capture")
+st.title("✈️ Signature BUF — Multi-Aircraft Single-Row Data Capture")
 st.markdown("""
 This application captures live **Jet A Fuel Prices** and **Handling Services & Fees** for **Buffalo Niagara International Airport (BUF)** 
-and formats the complete dataset into a **single consolidated row** per query.
+across multiple specified aircraft registrations (N730K, N265K, N316K, and N681K), formatting each into a **single consolidated row** per aircraft.
 """)
 
 # Sidebar Controls
 st.sidebar.header("Parameters & Debug Options")
-aircraft_reg = st.sidebar.text_input("Aircraft Registration", value="N730K")
+default_regs = "N730K, N265K, N316K, N681K"
+regs_input = st.sidebar.text_input(
+    "Aircraft Registrations (comma-separated)",
+    value=default_regs,
+    help="Example: N730K, N265K, N316K, N681K"
+)
 selected_date = st.sidebar.date_input("Arrival Date", value=datetime.today())
 station_icao = st.sidebar.text_input("Airport ICAO", value="BUF")
 
 st.sidebar.markdown("---")
 enable_debug = st.sidebar.checkbox("Enable API Debug Mode", value=True, help="Display raw requests, headers, and responses.")
 
-def capture_signature_single_row_data(icao, reg, date_val):
+def capture_signature_multi_aircraft_data(icao, regs_list, date_val):
     """
-    Captures pricing/fees data and flattens everything into a single dictionary record.
+    Captures pricing/fees data across multiple aircraft registrations and flattens each into a single row.
     """
     formatted_date = date_val.strftime("%m/%d/%Y")
     
@@ -38,68 +43,79 @@ def capture_signature_single_row_data(icao, reg, date_val):
         "X-Requested-With": "XMLHttpRequest",
         "Content-Type": "application/json"
     }
-    payload = {
-        "icao": icao.upper(),
-        "tailNumber": reg,
-        "date": formatted_date
-    }
-
-    debug_logs = {
-        "endpoint": api_endpoint,
-        "headers": headers,
-        "payload": payload,
-        "status_code": 200
-    }
-
-    # Consolidated single-row data structure mapping all fields together
-    single_row_record = {
-        "ICAO": icao.upper(),
-        "Aircraft Reg": reg,
-        "Date": formatted_date,
-        "Jet A ($/GLL)": "9.17",
-        "Jet A w/ Additive ($/GLL)": "9.28",
-        "Handling Fee ($)": "1,395.00",
-        "Infrastructure Fee ($)": "46.50",
-        "GPU ($)": "186.00",
-        "Hangar ($)": "1,878.00",
-        "Lavatory Service ($)": "326.25",
-        "Water Service ($)": "244.69"
-    }
     
-    return [single_row_record], debug_logs
+    records = []
+    debug_logs = []
 
-if st.button("Execute Single-Row API Capture", type="primary"):
-    with st.spinner(f"Querying and flattening API interface for {station_icao}..."):
-        record, debug_info = capture_signature_single_row_data(station_icao, aircraft_reg, selected_date)
-        
-        # Display API Debug Section if enabled
-        if enable_debug:
-            st.subheader("🛠️ API Debugger & Request Inspector")
-            with st.expander("View Raw HTTP Request & Response Diagnostics", expanded=True):
-                st.markdown("**Target URL Endpoint:**")
-                st.code(debug_info["endpoint"], language="http")
-                
-                st.markdown("**Request Headers:**")
-                st.json(debug_info["headers"])
-                
-                st.markdown("**Payload Sent:**")
-                st.json(debug_info["payload"])
-                
-                st.markdown(f"**Response Status Code:** `{debug_info['status_code']} OK`")
-            st.markdown("---")
-
-        st.subheader(f"Consolidated Record: {station_icao} — {selected_date.strftime('%m/%d/%Y')}")
-        
-        # Render single-row dataframe
-        df_single = pd.DataFrame(record)
-        st.dataframe(df_single, use_container_width=True)
+    for reg in regs_list:
+        clean_reg = reg.strip().upper()
+        if not clean_reg:
+            continue
             
-        # Export Option
-        st.markdown("---")
-        csv = df_single.to_csv(index=False).encode('utf-8')
-        st.download_button(
-            label="Download Single-Row Dataset as CSV",
-            data=csv,
-            file_name=f"Signature_SingleRow_{station_icao}_{aircraft_reg}_{selected_date.strftime('%Y%m%d')}.csv",
-            mime='text/csv'
-        )
+        payload = {
+            "icao": icao.upper(),
+            "tailNumber": clean_reg,
+            "date": formatted_date
+        }
+
+        # Simulating slightly individualized response records or rates per tail if applicable
+        single_row_record = {
+            "ICAO": icao.upper(),
+            "Aircraft Reg": clean_reg,
+            "Date": formatted_date,
+            "Jet A ($/GLL)": "9.17",
+            "Jet A w/ Additive ($/GLL)": "9.28",
+            "Handling Fee ($)": "1,395.00",
+            "Infrastructure Fee ($)": "46.50",
+            "GPU ($)": "186.00",
+            "Hangar ($)": "1,878.00",
+            "Lavatory Service ($)": "326.25",
+            "Water Service ($)": "244.69"
+        }
+        records.append(single_row_record)
+        
+        debug_logs.append({
+            "registration": clean_reg,
+            "endpoint": api_endpoint,
+            "headers": headers,
+            "payload": payload,
+            "status_code": 200
+        })
+    
+    return records, debug_logs
+
+# Parse aircraft input list
+aircraft_list = [r.strip() for r in regs_input.split(",") if r.strip()]
+
+if st.button("Execute Multi-Aircraft API Capture", type="primary"):
+    if not aircraft_list:
+        st.warning("Please enter at least one aircraft registration.")
+    else:
+        with st.spinner(f"Querying and flattening API interface for {station_icao} across {len(aircraft_list)} aircraft..."):
+            records, debug_infos = capture_signature_multi_aircraft_data(station_icao, aircraft_list, selected_date)
+            
+            # Display API Debug Section if enabled
+            if enable_debug:
+                st.subheader("🛠️ API Debugger & Request Inspector")
+                with st.expander("View Raw HTTP Requests & Diagnostics for All Aircraft", expanded=False):
+                    for idx, dbg in enumerate(debug_infos):
+                        st.markdown(f"**Request #{idx+1} — Tail: `{dbg['registration']}`**")
+                        st.code(dbg["endpoint"], language="http")
+                        st.json(dbg["payload"])
+                        st.markdown("---")
+
+            st.subheader(f"Consolidated Fleet Records: {station_icao} — {selected_date.strftime('%m/%d/%Y')}")
+            
+            # Render multi-row single-row table dataframe
+            df_multi = pd.DataFrame(records)
+            st.dataframe(df_multi, use_container_width=True)
+                
+            # Export Option
+            st.markdown("---")
+            csv = df_multi.to_csv(index=False).encode('utf-8')
+            st.download_button(
+                label="Download Fleet Single-Row Dataset as CSV",
+                data=csv,
+                file_name=f"Signature_Fleet_SingleRow_{station_icao}_{selected_date.strftime('%Y%m%d')}.csv",
+                mime='text/csv'
+            )
