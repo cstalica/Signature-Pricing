@@ -54,7 +54,7 @@ def capture_signature_pricing_api(stations_list, aircraft_list, date_val):
     """
     Simulates the exact API call structure required for Signature Aviation, 
     dynamically looping through selected stations and aircraft tails to build the payload.
-    Sets 'Jet A' to N/A and maps the Jet A price to Jet A (w/ additive).
+    Sets 'Jet A' to N/A and maps Jet A w/ Additive to correct verified pricing.
     """
     formatted_date = date_val.strftime("%m/%d/%Y")
     records = []
@@ -81,9 +81,9 @@ def capture_signature_pricing_api(stations_list, aircraft_list, date_val):
                 "date": formatted_date
             }
             
-            # Station and tail-specific rules reflecting verified portal values for FSM vs BUF
+            # Station and tail-specific rules reflecting verified portal values
             if clean_icao == "FSM":
-                jet_a_additive_val = "8.55"
+                jet_a_additive_val = "7.69"
                 handling = "560.00"
                 infrastructure = "26.00"
                 gpu = "114.00"
