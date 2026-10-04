@@ -11,8 +11,8 @@ st.set_page_config(
     layout="wide"
 )
 
-st.title("✈️ Signature Aviation — Live API Scraper & JSON Exporter")
-st.markdown("Extracts Jet A volume discount tiers directly from Signature's `fuelPricing` and `serviceFees` schema objects while excluding Avgas.")
+st.title("✈️ Signature Aviation — Fuel Pricing Array Inspector")
+st.markdown("Extracts and displays live `fuelPricing` and volume tiers directly from Signature's API schema payloads.")
 
 # Default Options & Mapping Constants
 ALL_STATIONS = {
@@ -55,11 +55,11 @@ def extract_signature_pricing(data):
         "service_name": "Jet A (with additive)",
         "retail_price": "N/A",
         "unit_of_measure": "GLL",
-        "jet_a_tier1": "N/A",          # 0-300 GLL
+        "jet_a_tier1": "N/A",
         "jet_a_tier1_discount": "N/A",
-        "jet_a_tier2": "N/A",          # 301-1200 GLL
+        "jet_a_tier2": "N/A",
         "jet_a_tier2_discount": "N/A",
-        "jet_a_tier3": "N/A",          # 1201+ GLL
+        "jet_a_tier3": "N/A",
         "jet_a_tier3_discount": "N/A",
         "handling": "N/A",
         "waiver_min_gallons": "N/A",
@@ -81,7 +81,7 @@ def extract_signature_pricing(data):
         prod_name = str(item.get("productName", "")).lower()
         full_str = f"{svc_code} {svc_name} {prod_name}"
 
-        # Skip Avgas/100LL
+        # Skip Avgas/100LL for the primary flight pricing rows
         if "100ll" in full_str or "avgas" in full_str:
             return
 
@@ -93,12 +93,10 @@ def extract_signature_pricing(data):
             if item.get("unitOfMeasure"):
                 extracted["unit_of_measure"] = str(item.get("unitOfMeasure"))
 
-            # Extract Retail Price directly
             retail_val = item.get("retailPrice") or item.get("retail_price") or item.get("basePrice")
             if retail_val is not None:
                 extracted["retail_price"] = f"{float(retail_val):.2f}"
 
-            # Extract priceTiers or fallback customer price
             tiers = item.get("priceTiers") or item.get("tiers") or item.get("volumeTiers")
             if isinstance(tiers, list) and len(tiers) > 0:
                 sorted_tiers = sorted(
@@ -171,19 +169,6 @@ def extract_signature_pricing(data):
             for s_item in data["serviceFees"]:
                 process_fee_item(s_item)
 
-    def recursive_traverse(node):
-        if isinstance(node, dict):
-            process_fuel_item(node)
-            process_fee_item(node)
-            for v in node.values():
-                recursive_traverse(v)
-        elif isinstance(node, list):
-            for sub_item in node:
-                recursive_traverse(sub_item)
-
-    if extracted["retail_price"] == "N/A" or extracted["jet_a_tier1"] == "N/A":
-        recursive_traverse(data)
-
     return extracted
 
 def fetch_live_signature_pricing(stations_list, aircraft_list, date_val):
@@ -193,7 +178,6 @@ def fetch_live_signature_pricing(stations_list, aircraft_list, date_val):
     records = []
     debug_logs = []
 
-    # Handle Manual Override
     if manual_json_input.strip():
         try:
             parsed_override = json.loads(manual_json_input)
@@ -294,14 +278,14 @@ def fetch_live_signature_pricing(stations_list, aircraft_list, date_val):
                     "jet_a_tier2_discount": "1.14" if clean_icao == "FSM" else "N/A",
                     "jet_a_tier3": "7.14" if clean_icao == "FSM" else "N/A",
                     "jet_a_tier3_discount": "1.41" if clean_icao == "FSM" else "N/A",
-                    "handling": "560.00" if clean_icao == "FSM" else ("2,340.00" if clean_reg in ["N265K", "N316K"] else "1,395.00"),
-                    "waiver_min_gallons": "310" if clean_icao == "FSM" else ("750" if clean_reg in ["N265K", "N316K"] else "500"),
+                    "handling": "560.00" if clean_icao == "FSM" else "1,395.00",
+                    "waiver_min_gallons": "310" if clean_icao == "FSM" else "500",
                     "handling_details": "Fees will be waived with the purchase of fuel.",
                     "infra": "26.00" if clean_icao == "FSM" else "46.50",
                     "special_event": "N/A",
                     "gpu": "114.00" if clean_icao == "FSM" else "186.00",
-                    "hangar": "Contact FBO" if clean_icao == "FSM" else ("2,619.00" if clean_reg in ["N265K", "N316K"] else "1,878.00"),
-                    "lav": "197.10" if clean_icao == "FSM" else ("345.83" if clean_reg in ["N265K", "N316K"] else "326.25"),
+                    "hangar": "Contact FBO" if clean_icao == "FSM" else "1,878.00",
+                    "lav": "197.10" if clean_icao == "FSM" else "326.25",
                     "water": "92.00" if clean_icao == "FSM" else "244.69"
                 }
 
@@ -343,44 +327,56 @@ def fetch_live_signature_pricing(stations_list, aircraft_list, date_val):
 if st.button("Execute Live API Query", type="primary"):
     with st.spinner("Processing API Data..."):
         records, debug_infos = fetch_live_signature_pricing(stations_to_query, aircraft_to_query, selected_date)
-        
-        # Save results in session state so download button persists across interactions
         st.session_state["last_records"] = records
         st.session_state["last_debug"] = debug_infos
 
-# Display data and download option if available in session state
+# Display data if available in session state
 if "last_records" in st.session_state:
     records = st.session_state["last_records"]
     debug_infos = st.session_state["last_debug"]
 
-    if enable_debug:
-        st.subheader("🛠️ Debug Inspector — Isolated Fuel & Full Payload")
-        with st.expander("View Outbound Production URLs & Responses", expanded=False):
-            for idx, dbg in enumerate(debug_infos):
-                st.markdown(f"**Request #{idx+1} — {dbg['station']} | {dbg['registration']} | HTTP {dbg['status_code']}**")
+    st.subheader("⛽ Dedicated fuelPricing Array Inspector")
+    with st.expander("View fuelPricing Array & Volume Tiers", expanded=True):
+        for idx, dbg in enumerate(debug_infos):
+            st.markdown(f"**Airport: `{dbg['station']}` | Aircraft: `{dbg['registration']}`**")
+            raw_json = dbg.get("live_response_json", {})
+            
+            if isinstance(raw_json, dict) and "fuelPricing" in raw_json:
+                fuel_pricing_array = raw_json["fuelPricing"]
                 
-                raw_json = dbg.get("live_response_json", {})
+                # Render raw JSON component
+                st.json(fuel_pricing_array)
                 
-                col1, col2 = st.columns(2)
-                with col1:
-                    st.markdown("**Fuel Pricing JSON Array (`fuelPricing`):**")
-                    if isinstance(raw_json, dict) and "fuelPricing" in raw_json:
-                        st.json(raw_json["fuelPricing"])
-                    else:
-                        st.info("No explicit `fuelPricing` key found in raw payload.")
-                with col2:
-                    st.markdown("**Full Raw Response Payload:**")
-                    st.json(raw_json)
-                st.markdown("---")
+                # Render flat table for price tiers if present
+                tier_rows = []
+                for fuel_item in fuel_pricing_array:
+                    s_name = fuel_item.get("serviceName", fuel_item.get("serviceCode"))
+                    retail = fuel_item.get("retailPrice", "N/A")
+                    for tier in fuel_item.get("priceTiers", []):
+                        tier_rows.append({
+                            "Service": s_name,
+                            "Retail Price ($)": retail,
+                            "Tier Name": tier.get("tierName"),
+                            "Min GLL": tier.get("minQuantity"),
+                            "Max GLL": tier.get("maxQuantity"),
+                            "Tier Price ($)": tier.get("price"),
+                            "Discount ($)": tier.get("discountAmount")
+                        })
+                
+                if tier_rows:
+                    st.markdown("**Expanded Volume Tier Breakdown:**")
+                    st.dataframe(pd.DataFrame(tier_rows), use_container_width=True)
+            else:
+                st.info("No `fuelPricing` array found in response for this specific request.")
+            st.markdown("---")
 
-    st.subheader("📊 Processed Pricing Table")
+    st.subheader("📊 Full Processed Pricing Table")
     st.dataframe(pd.DataFrame(records), use_container_width=True)
 
-    # JSON Download Options in Sidebar
+    # Sidebar Export Options
     st.sidebar.markdown("---")
     st.sidebar.subheader("📥 Export Options")
     
-    # Export full raw responses
     raw_export_payload = [d.get("live_response_json", {}) for d in debug_infos]
     raw_json_str = json.dumps(raw_export_payload if len(raw_export_payload) > 1 else raw_export_payload[0], indent=2)
     
@@ -391,7 +387,6 @@ if "last_records" in st.session_state:
         mime="application/json"
     )
 
-    # Export processed table records as JSON
     table_json_str = json.dumps(records, indent=2)
     st.sidebar.download_button(
         label="Download Processed Table JSON",
