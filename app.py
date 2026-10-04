@@ -46,7 +46,6 @@ else:
 selected_date = st.sidebar.date_input("Arrival Date", value=datetime.today())
 
 st.sidebar.markdown("---")
-manual_json_input = st.sidebar.text_area("Paste Raw JSON Override (Optional)", value="", height=150, help="Paste a raw API response here to directly test and update the app data.")
 enable_debug = st.sidebar.checkbox("Enable Live API Debug Inspector", value=True)
 
 def generate_mock_signature_payload(icao, reg, date_str):
@@ -288,49 +287,6 @@ def fetch_live_signature_pricing(stations_list, aircraft_list, date_val):
     records = []
     debug_logs = []
 
-    if manual_json_input.strip():
-        try:
-            parsed_override = json.loads(manual_json_input)
-            station_code = parsed_override.get("station", {}).get("baseCode", stations_list[0]) if isinstance(parsed_override.get("station"), dict) else stations_list[0]
-            tail_reg = parsed_override.get("tailNumber", aircraft_list[0])
-            p_date = parsed_override.get("pricingDate", formatted_date)
-            
-            parsed = extract_signature_pricing(parsed_override)
-            records.append({
-                "ICAO": station_code,
-                "Aircraft Reg": tail_reg,
-                "Date": p_date,
-                "Service Code": parsed["service_code"],
-                "Service Name": parsed["service_name"],
-                "UOM": parsed["unit_of_measure"],
-                "Retail Price ($)": parsed["retail_price"],
-                "Jet A 0-300 GLL ($)": parsed["jet_a_tier1"],
-                "Tier 1 Discount ($)": parsed["jet_a_tier1_discount"],
-                "Jet A 301-1200 GLL ($)": parsed["jet_a_tier2"],
-                "Tier 2 Discount ($)": parsed["jet_a_tier2_discount"],
-                "Jet A 1201+ GLL ($)": parsed["jet_a_tier3"],
-                "Tier 3 Discount ($)": parsed["jet_a_tier3_discount"],
-                "Handling Fee ($)": parsed["handling"],
-                "Waiver Min Gallons": parsed["waiver_min_gallons"],
-                "Waiver Description": parsed["handling_details"],
-                "Infrastructure Fee ($)": parsed["infra"],
-                "Special Event Fee ($)": parsed["special_event"],
-                "GPU ($)": parsed["gpu"],
-                "Hangar ($)": parsed["hangar"] if parsed["hangar"] != "0.00" else "Contact FBO",
-                "Lavatory Service ($)": parsed["lav"],
-                "Water Service ($)": parsed["water"]
-            })
-            debug_logs.append({
-                "station": station_code,
-                "registration": tail_reg,
-                "status_code": 200,
-                "url": "Manual JSON Override Input",
-                "live_response_json": parsed_override
-            })
-            return records, debug_logs
-        except Exception as err:
-            st.error(f"Error parsing manual JSON override: {err}")
-
     for icao in stations_list:
         clean_icao = icao.strip().upper()
         station_info = ALL_STATIONS.get(clean_icao, {"baseId": "B80", "baseCode": clean_icao})
@@ -461,25 +417,3 @@ if "last_records" in st.session_state:
 
     st.subheader("📊 Full Processed Pricing Table")
     st.dataframe(pd.DataFrame(records), use_container_width=True)
-
-    # Sidebar Export Options
-    st.sidebar.markdown("---")
-    st.sidebar.subheader("📥 Export Options")
-    
-    raw_export_payload = [d.get("live_response_json", {}) for d in debug_infos]
-    raw_json_str = json.dumps(raw_export_payload if len(raw_export_payload) > 1 else raw_export_payload[0], indent=2)
-    
-    st.sidebar.download_button(
-        label="Download Raw API JSON",
-        data=raw_json_str,
-        file_name=f"signature_pricing_raw_{datetime.today().strftime('%Y%m%d')}.json",
-        mime="application/json"
-    )
-
-    table_json_str = json.dumps(records, indent=2)
-    st.sidebar.download_button(
-        label="Download Processed Table JSON",
-        data=table_json_str,
-        file_name=f"signature_pricing_table_{datetime.today().strftime('%Y%m%d')}.json",
-        mime="application/json"
-    )
