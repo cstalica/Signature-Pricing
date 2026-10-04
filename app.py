@@ -1,6 +1,8 @@
 import streamlit as st
 import requests
 import pandas as pd
+import json
+import re
 from datetime import datetime
 
 # Page Configuration
@@ -10,11 +12,8 @@ st.set_page_config(
     layout="wide"
 )
 
-st.title("✈️ Signature Aviation — Live Fleet Pricing & Fee Scraper")
-st.markdown("""
-This application queries the live Signature Aviation production API authority 
-(`https://new-prod-api.signatureaviation.com`), dynamically parsing **`Jet A`**, **`Jet A (with additive)`**, fees, and the **Gallons to Waive Handling Fee** from `serviceDetails`.
-""")
+st.title("✈️ Signature Aviation — Brute-Force Live API Scraper")
+st.markdown("This version uses an aggressive brute-force crawler to scan every nested level of the JSON for any valid float associated with fuel and fees.")
 
 # Default Options & Mapping Constants
 ALL_STATIONS = {
@@ -46,9 +45,8 @@ else:
     aircraft_to_query = DEFAULT_FLEET
 
 selected_date = st.sidebar.date_input("Arrival Date", value=datetime.today())
-
 st.sidebar.markdown("---")
-enable_debug = st.sidebar.checkbox("Enable Live API Debug Inspector", value=True, help="Inspect raw outbound URLs, headers, and live JSON responses returned from the API.")
+enable_debug = st.sidebar.checkbox("Enable Live API Debug Inspector", value=True)
 
 def fetch_live_signature_pricing(stations_list, aircraft_list, date_val):
     formatted_date = date_val.strftime("%m/%d/%Y")
@@ -60,9 +58,7 @@ def fetch_live_signature_pricing(stations_list, aircraft_list, date_val):
     for icao in stations_list:
         clean_icao = icao.strip().upper()
         station_info = ALL_STATIONS.get(clean_icao, {"baseId": "B80", "baseCode": clean_icao})
-        base_id = station_info["baseId"]
-        base_code = station_info["baseCode"]
-
+        
         for reg in aircraft_list:
             clean_reg = reg.strip().upper()
             if not clean_reg:
@@ -70,7 +66,7 @@ def fetch_live_signature_pricing(stations_list, aircraft_list, date_val):
                 
             path_endpoint = (
                 f"/api/rest/pricing/services/discount?"
-                f"baseId={base_id}&baseCode={base_code}&pricingDate={encoded_date}&"
+                f"baseId={station_info['baseId']}&baseCode={station_info['baseCode']}&pricingDate={encoded_date}&"
                 f"modelNumber={MODEL_NUMBER}&tailNumber={clean_reg}&"
                 f"accountNumber={ACCOUNT_NUMBER}&accountId={ACCOUNT_ID}"
             )
@@ -84,7 +80,6 @@ def fetch_live_signature_pricing(stations_list, aircraft_list, date_val):
                 "Referer": "https://www.signatureaviation.com"
             }
             
-            api_success = False
             response_json = {}
             status_code = 0
             
@@ -94,68 +89,70 @@ def fetch_live_signature_pricing(stations_list, aircraft_list, date_val):
                 if status_code == 200:
                     try:
                         response_json = response.json()
-                        api_success = True
                     except Exception:
-                        response_json = {"raw_text": response.text}
+                        response_json = {"raw_text": response.text[:500] + "... (truncated)"}
                 else:
-                    response_json = {"error": f"HTTP Status {status_code}", "text": response.text[:300]}
+                    response_json = {"error": f"HTTP {status_code}"}
             except Exception as e:
-                status_code = 500
                 response_json = {"error": str(e)}
 
-            def parse_signature_json(data):
+            # BRUTE FORCE PARSER
+            def brute_force_extract(data):
                 extracted = {
-                    "jet_a": "N/A",
-                    "jet_a_additive": "N/A",
-                    "handling": "N/A",
-                    "handling_details": "N/A",
-                    "infra": "N/A",
-                    "special_event": "N/A",
-                    "gpu": "N/A",
-                    "hangar": "N/A",
-                    "lav": "N/A",
-                    "water": "N/A"
+                    "jet_a": "N/A", "jet_a_additive": "N/A", 
+                    "handling": "N/A", "handling_details": "N/A",
+                    "infra": "N/A", "special_event": "N/A", 
+                    "gpu": "N/A", "hangar": "N/A", "lav": "N/A", "water": "N/A"
                 }
+
+                # Recursively extract every single number inside a given dictionary
+                def get_lowest_price(node_dict):
+                    nums = []
+                    def _extract(n):
+                        if isinstance(n, dict):
+                            for k, v in n.items():
+                                if isinstance(v, (int, float)):
+                                    nums.append(float(v))
+                                elif isinstance(v, str) and re.match(r"^\d+\.\d{2}$", v):
+                                    nums.append(float(v))
+                                else:
+                                    _extract(v)
+                        elif isinstance(n, list):
+                            for i in n:
+                                _extract(i)
+                    _extract(node_dict)
+                    
+                    # Filter for realistic prices (ignore tiny decimals or massive IDs)
+                    valid_prices = [p for p in nums if 0.1 < p < 10000]
+                    return f"{min(valid_prices):.2f}" if valid_prices else "N/A"
 
                 def traverse(node):
                     if isinstance(node, dict):
-                        name_str = " ".join([
-                            str(node.get("name", "")),
-                            str(node.get("description", "")),
-                            str(node.get("productName", "")),
-                            str(node.get("serviceName", "")),
-                            str(node.get("fuelType", "")),
-                            str(node.get("productCode", ""))
-                        ]).lower()
-
-                        price_val = None
-                        for pk in ["customerPrice", "retailPrice", "price", "unitPrice", "amount", "fee", "rate"]:
-                            if node.get(pk) is not None:
-                                price_val = str(node.get(pk))
-                                break
-
-                        if price_val:
-                            if "additive" in name_str or "jet a (with additive)" in name_str:
-                                extracted["jet_a_additive"] = price_val
-                            elif "jet a" in name_str or "jeta" in name_str:
-                                extracted["jet_a"] = price_val
-                            elif "handling" in name_str or "ramp fee" in name_str:
-                                extracted["handling"] = price_val
+                        # Combine all string values in this dictionary level to identify what it is
+                        dict_strings = " ".join([str(v).lower() for k, v in node.items() if isinstance(v, str)])
+                        
+                        # Only target dictionaries that seem to describe a product
+                        if any(k in str(node.keys()).lower() for k in ["name", "desc", "product", "type", "service"]):
+                            
+                            if "additive" in dict_strings or "jet a (with" in dict_strings:
+                                extracted["jet_a_additive"] = get_lowest_price(node)
+                            elif "jet a" in dict_strings or "jeta" in dict_strings:
+                                extracted["jet_a"] = get_lowest_price(node)
+                            elif "handling" in dict_strings or "ramp" in dict_strings:
+                                extracted["handling"] = get_lowest_price(node)
                                 for dk in ["serviceDetails", "details", "waiverText", "notes"]:
                                     if node.get(dk):
                                         extracted["handling_details"] = str(node.get(dk))
-                            elif "infrastructure" in name_str:
-                                extracted["infra"] = price_val
-                            elif "special event" in name_str or "event fee" in name_str:
-                                extracted["special_event"] = price_val
-                            elif "ground power" in name_str or "gpu" in name_str:
-                                extracted["gpu"] = price_val
-                            elif "hangar" in name_str:
-                                extracted["hangar"] = price_val
-                            elif "lavatory" in name_str or "lav" in name_str:
-                                extracted["lav"] = price_val
-                            elif "water" in name_str:
-                                extracted["water"] = price_val
+                            elif "infrastructure" in dict_strings:
+                                extracted["infra"] = get_lowest_price(node)
+                            elif "gpu" in dict_strings or "ground power" in dict_strings:
+                                extracted["gpu"] = get_lowest_price(node)
+                            elif "hangar" in dict_strings:
+                                extracted["hangar"] = get_lowest_price(node)
+                            elif "lavatory" in dict_strings or "lav " in dict_strings:
+                                extracted["lav"] = get_lowest_price(node)
+                            elif "water" in dict_strings:
+                                extracted["water"] = get_lowest_price(node)
 
                         for val in node.values():
                             traverse(val)
@@ -164,117 +161,53 @@ def fetch_live_signature_pricing(stations_list, aircraft_list, date_val):
                             traverse(item)
 
                 traverse(data)
+                
+                # Cross-fill Jet A if one was found but not the other
+                if extracted["jet_a"] != "N/A" and extracted["jet_a_additive"] == "N/A":
+                    extracted["jet_a_additive"] = extracted["jet_a"]
+                elif extracted["jet_a_additive"] != "N/A" and extracted["jet_a"] == "N/A":
+                    extracted["jet_a"] = extracted["jet_a_additive"]
+                    
                 return extracted
 
-            if api_success and response_json:
-                parsed = parse_signature_json(response_json)
-                
-                jet_a_val = parsed["jet_a"]
-                jet_a_additive_val = parsed["jet_a_additive"]
-                
-                # If either field was found, map them across so both reflect the current rate
-                if jet_a_val != "N/A" and jet_a_additive_val == "N/A":
-                    jet_a_additive_val = jet_a_val
-                elif jet_a_additive_val != "N/A" and jet_a_val == "N/A":
-                    jet_a_val = jet_a_additive_val
+            parsed = brute_force_extract(response_json)
 
-                handling_val = parsed["handling"]
-                handling_details_val = parsed["handling_details"]
-                infra_val = parsed["infra"]
-                special_event_val = parsed["special_event"]
-                gpu_val = parsed["gpu"]
-                hangar_val = parsed["hangar"] if parsed["hangar"] != "N/A" else "Contact FBO"
-                lav_val = parsed["lav"]
-                water_val = parsed["water"]
-            else:
-                special_event_val = "N/A"
-                if clean_icao == "FSM":
-                    jet_a_val = "7.69"
-                    jet_a_additive_val = "7.69"
-                    infra_val = "26.00"
-                    gpu_val = "114.00"
-                    hangar_val = "Contact FBO"
-                    water_val = "92.00"
-                    if clean_reg == "N265K":
-                        handling_val = "940.00"
-                        lav_val = "208.05"
-                        handling_details_val = "Fees will be waived with the purchase of 520 US Gallon [GLL] of fuel."
-                    else:
-                        handling_val = "560.00"
-                        lav_val = "197.10"
-                        handling_details_val = "Fees will be waived with the purchase of 310 US Gallon [GLL] of fuel."
-                else: 
-                    jet_a_val = "8.71"
-                    jet_a_additive_val = "8.71"
-                    infra_val = "46.50"
-                    gpu_val = "186.00"
-                    water_val = "244.69"
-                    if clean_reg in ["N265K", "N316K"]:
-                        handling_val = "2,340.00"
-                        hangar_val = "2,619.00"
-                        lav_val = "345.83"
-                        handling_details_val = "Fees will be waived with the purchase of 750 US Gallon [GLL] of fuel."
-                    else:
-                        handling_val = "1,395.00"
-                        hangar_val = "1,878.00"
-                        lav_val = "326.25"
-                        handling_details_val = "Fees will be waived with the purchase of 500 US Gallon [GLL] of fuel."
-
-            single_row_record = {
+            records.append({
                 "ICAO": clean_icao,
                 "Aircraft Reg": clean_reg,
                 "Date": formatted_date,
-                "Jet A ($/GLL)": jet_a_val,
-                "Jet A w/ Additive ($/GLL)": jet_a_additive_val,
-                "Handling Fee ($)": handling_val,
-                "Gallons to Waive Handling Fee": handling_details_val,
-                "Infrastructure Fee ($)": infra_val,
-                "Special Event Fee ($)": special_event_val,
-                "GPU ($)": gpu_val,
-                "Hangar ($)": hangar_val,
-                "Lavatory Service ($)": lav_val,
-                "Water Service ($)": water_val
-            }
-            records.append(single_row_record)
+                "Jet A ($/GLL)": parsed["jet_a"],
+                "Jet A w/ Additive ($/GLL)": parsed["jet_a_additive"],
+                "Handling Fee ($)": parsed["handling"],
+                "Gallons to Waive Handling Fee": parsed["handling_details"],
+                "Infrastructure Fee ($)": parsed["infra"],
+                "Special Event Fee ($)": parsed["special_event"],
+                "GPU ($)": parsed["gpu"],
+                "Hangar ($)": parsed["hangar"] if parsed["hangar"] != "N/A" else "Contact FBO",
+                "Lavatory Service ($)": parsed["lav"],
+                "Water Service ($)": parsed["water"]
+            })
             
             debug_logs.append({
                 "station": clean_icao,
                 "registration": clean_reg,
-                "url": full_url,
-                "headers": headers,
                 "status_code": status_code,
+                "url": full_url,
                 "live_response_json": response_json
             })
     
     return records, debug_logs
 
 if st.button("Execute Live API Query", type="primary"):
-    with st.spinner(f"Querying production API for {len(stations_to_query)} station(s) across {len(aircraft_to_query)} aircraft..."):
+    with st.spinner("Executing Brute-Force crawler on live API..."):
         records, debug_infos = fetch_live_signature_pricing(stations_to_query, aircraft_to_query, selected_date)
         
         if enable_debug:
-            st.subheader("🛠️ Production API Request & JSON Response Inspector")
+            st.subheader("🛠️ Debug Inspector")
             with st.expander("View Outbound Production URLs & Live JSON Responses", expanded=True):
                 for idx, dbg in enumerate(debug_infos):
-                    st.markdown(f"**Request #{idx+1} — Station: `{dbg['station']}` | Tail: `{dbg['registration']}` | Status: `{dbg['status_code']}`**")
-                    col_d1, col_d2 = st.columns(2)
-                    with col_d1:
-                        st.markdown("Full Production URL:")
-                        st.code(dbg["url"], language="http")
-                    with col_d2:
-                        st.markdown("Live API Response JSON:")
-                        st.json(dbg["live_response_json"])
+                    st.markdown(f"**Request #{idx+1} — {dbg['station']} | {dbg['registration']} | HTTP {dbg['status_code']}**")
+                    st.json(dbg["live_response_json"])
                     st.markdown("---")
 
-        st.subheader(f"Live Fleet Pricing & Fees Report — Date: {selected_date.strftime('%m/%d/%Y')}")
-        df_results = pd.DataFrame(records)
-        st.dataframe(df_results, use_container_width=True)
-            
-        st.markdown("---")
-        csv = df_results.to_csv(index=False).encode('utf-8')
-        st.download_button(
-            label="Download Live Dataset as CSV",
-            data=csv,
-            file_name=f"Signature_Prod_API_Report_{selected_date.strftime('%Y%m%d')}.csv",
-            mime='text/csv'
-        )
+        st.dataframe(pd.DataFrame(records), use_container_width=True)
