@@ -13,7 +13,7 @@ st.set_page_config(
 
 st.title("✈️ Signature BUF — API Data Capture & Debugger")
 st.markdown("""
-This application captures live **Fuel Prices** and **Handling Services & Fees** for **Buffalo Niagara International Airport (BUF)** 
+This application captures live **Jet A Fuel Prices** and **Handling Services & Fees** for **Buffalo Niagara International Airport (BUF)** 
 with built-in **API Debugging** options to inspect raw requests, payload structures, and response headers.
 """)
 
@@ -29,7 +29,7 @@ enable_debug = st.sidebar.checkbox("Enable API Debug Mode", value=True, help="Di
 def capture_signature_api_data(icao, reg, date_val, debug):
     """
     Simulates / captures API endpoints or backing structures for Signature Aviation pricing.
-    Includes diagnostic capture for debugging.
+    Includes diagnostic capture for debugging, filtering fuel prices specifically to Jet A variants.
     """
     formatted_date = date_val.strftime("%m/%d/%Y")
     
@@ -60,14 +60,10 @@ def capture_signature_api_data(icao, reg, date_val, debug):
         }
     }
 
-    # Live structured datasets reflecting the live FBO modal view at BUF
+    # Filtered fuel dataset containing only Jet A variants matching live FBO modal values at BUF
     fuel_data = [
-        {"Product": "Avgas 100LL", "Price (USD/GLL)": "8.60", "Aircraft Reg": reg},
-        {"Product": "Diesel", "Price (USD/GLL)": "Price Unavailable", "Aircraft Reg": reg},
         {"Product": "Jet A", "Price (USD/GLL)": "9.17", "Aircraft Reg": reg},
-        {"Product": "Jet A (with additive)", "Price (USD/GLL)": "9.28", "Aircraft Reg": reg},
-        {"Product": "Mogas", "Price (USD/GLL)": "Price Unavailable", "Aircraft Reg": reg},
-        {"Product": "Prist Additive", "Price (USD/GLL)": "Price Unavailable", "Aircraft Reg": reg}
+        {"Product": "Jet A (with additive)", "Price (USD/GLL)": "9.28", "Aircraft Reg": reg}
     ]
     
     fee_data = [
@@ -109,7 +105,7 @@ if st.button("Execute API Capture", type="primary"):
         col1, col2 = st.columns(2)
         
         with col1:
-            st.markdown("### ⛽ Fuel Prices (USD / GLL)")
+            st.markdown("### ⛽ Jet A Fuel Prices (USD / GLL)")
             df_fuel = pd.DataFrame(fuels)
             st.dataframe(df_fuel, use_container_width=True)
             
