@@ -83,7 +83,7 @@ def fetch_live_signature_pricing(stations_list, aircraft_list, date_val):
                 "X-Requested-With": "XMLHttpRequest",
                 "Accept": "application/json, text/javascript, */*; q=0.01",
                 "Origin": "https://www.signatureaviation.com",
-                "Referer": "https://www.signatureaviation.com/"
+                "Referer": "https://www.signatureaviation.com"
             }
             
             api_success = False
@@ -105,86 +105,91 @@ def fetch_live_signature_pricing(stations_list, aircraft_list, date_val):
                 status_code = 500
                 response_json = {"error": str(e)}
 
-            # Robust recursive search function targeting keys and values inside dictionaries and lists
-            def deep_find(obj, target_keywords, price_keys):
-                if isinstance(obj, dict):
-                    # Check text fields in this dictionary
-                    combined_text = " ".join([
-                        str(obj.get("name", "")),
-                        str(obj.get("description", "")),
-                        str(obj.get("productName", "")),
-                        str(obj.get("serviceName", "")),
-                        str(obj.get("fuelType", "")),
-                        str(obj.get("code", ""))
-                    ]).lower()
-                    
-                    if any(kw in combined_text for kw in target_keywords):
-                        for pk in price_keys:
-                            val = obj.get(pk)
-                            if val is not None and str(val).strip() != "":
-                                return str(val)
-                                
-                    # Recurse through all dictionary values
-                    for v in obj.values():
-                        res = deep_find(v, target_keywords, price_keys)
-                        if res != "N/A":
-                            return res
-                elif isinstance(obj, list):
-                    for item in obj:
-                        res = deep_find(item, target_keywords, price_keys)
-                        if res != "N/A":
-                            return res
-                return "N/A"
+            # Targeted extractor looking through list collections and dictionaries for matching fuel/fee items
+            def parse_signature_json(data):
+                extracted = {
+                    "jet_a": "N/A",
+                    "jet_a_additive": "N/A",
+                    "handling": "N/A",
+                    "handling_details": "N/A",
+                    "infra": "N/A",
+                    "special_event": "N/A",
+                    "gpu": "N/A",
+                    "hangar": "N/A",
+                    "lav": "N/A",
+                    "water": "N/A"
+                }
 
-            def deep_find_details(obj, target_keywords):
-                if isinstance(obj, dict):
-                    combined_text = " ".join([
-                        str(obj.get("name", "")),
-                        str(obj.get("description", ""))
-                    ]).lower()
-                    
-                    if any(kw in combined_text for kw in target_keywords):
-                        for dk in ["serviceDetails", "details", "waiverText", "notes"]:
-                            val = obj.get(dk)
-                            if val is not None and str(val).strip() != "":
-                                return str(val)
-                                
-                    for v in obj.values():
-                        res = deep_find_details(v, target_keywords)
-                        if res != "N/A":
-                            return res
-                elif isinstance(obj, list):
-                    for item in obj:
-                        res = deep_find_details(item, target_keywords)
-                        if res != "N/A":
-                            return res
-                return "N/A"
+                def traverse(node):
+                    if isinstance(node, dict):
+                        # Identify name fields
+                        name_str = " ".join([
+                            str(node.get("name", "")),
+                            str(node.get("description", "")),
+                            str(node.get("productName", "")),
+                            str(node.get("serviceName", ""))
+                        ]).lower()
+
+                        # Extract price value
+                        price_val = None
+                        for pk in ["customerPrice", "retailPrice", "price", "unitPrice", "amount", "fee", "rate"]:
+                            if node.get(pk) is not None:
+                                price_val = str(node.get(pk))
+                                break
+
+                        if price_val:
+                            if "jet a (with additive)" in name_str or "additive" in name_str:
+                                extracted["jet_a_additive"] = price_val
+                            elif "jet a" in name_str and "avgas" not in name_str:
+                                extracted["jet_a"] = price_val
+                            elif "handling" in name_str or "ramp fee" in name_str:
+                                extracted["handling"] = price_val
+                                # Check for waiver details
+                                for dk in ["serviceDetails", "details", "waiverText", "notes"]:
+                                    if node.get(dk):
+                                        extracted["handling_details"] = str(node.get(dk))
+                            elif "infrastructure" in name_str:
+                                extracted["infra"] = price_val
+                            elif "special event" in name_str or "event fee" in name_str:
+                                extracted["special_event"] = price_val
+                            elif "ground power" in name_str or "gpu" in name_str:
+                                extracted["gpu"] = price_val
+                            elif "hangar" in name_str:
+                                extracted["hangar"] = price_val
+                            elif "lavatory" in name_str or "lav" in name_str:
+                                extracted["lav"] = price_val
+                            elif "water" in name_str:
+                                extracted["water"] = price_val
+
+                        # Continue traversing children
+                        for val in node.values():
+                            traverse(val)
+                    elif isinstance(node, list):
+                        for item in node:
+                            traverse(item)
+
+                traverse(data)
+                return extracted
 
             if api_success and response_json:
-                price_fields_pool = ["retailPrice", "customerPrice", "price", "unitPrice", "amount", "rate", "fee"]
+                parsed = parse_signature_json(response_json)
                 
-                # Search for Jet A variants
-                jet_a_additive_val = deep_find(response_json, ["additive", "jet a with additive"], price_fields_pool)
-                jet_a_val = deep_find(response_json, ["jet a", "jet-a"], price_fields_pool)
+                jet_a_val = parsed["jet_a"]
+                jet_a_additive_val = parsed["jet_a_additive"]
                 
                 if jet_a_val == "N/A" and jet_a_additive_val != "N/A":
                     jet_a_val = jet_a_additive_val
                 elif jet_a_additive_val == "N/A" and jet_a_val != "N/A":
                     jet_a_additive_val = jet_a_val
 
-                handling_val = deep_find(response_json, ["handling", "ramp fee"], price_fields_pool)
-                infra_val = deep_find(response_json, ["infrastructure"], price_fields_pool)
-                special_event_val = deep_find(response_json, ["special event", "event fee"], price_fields_pool)
-                gpu_val = deep_find(response_json, ["ground power", "gpu"], price_fields_pool)
-                
-                hangar_val = deep_find(response_json, ["hangar"], price_fields_pool)
-                if hangar_val == "N/A":
-                    hangar_val = "Contact FBO"
-                    
-                lav_val = deep_find(response_json, ["lavatory", "lav"], price_fields_pool)
-                water_val = deep_find(response_json, ["water"], price_fields_pool)
-                
-                handling_details_val = deep_find_details(response_json, ["handling", "ramp fee"])
+                handling_val = parsed["handling"]
+                handling_details_val = parsed["handling_details"]
+                infra_val = parsed["infra"]
+                special_event_val = parsed["special_event"]
+                gpu_val = parsed["gpu"]
+                hangar_val = parsed["hangar"] if parsed["hangar"] != "N/A" else "Contact FBO"
+                lav_val = parsed["lav"]
+                water_val = parsed["water"]
             else:
                 special_event_val = "N/A"
                 if clean_icao == "FSM":
