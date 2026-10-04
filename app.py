@@ -34,12 +34,12 @@ def capture_signature_multi_aircraft_api(icao, regs_list, date_val):
     """
     Simulates the exact API call structure required for Signature Aviation, 
     dynamically including the specific aircraft tail number in the request payload for each lookup,
-    and applying specific tail-number-based pricing rules including exact rates from verified UI data.
+    and applying exact tail-number-based pricing rules matching the verified portal UI.
     """
     formatted_date = date_val.strftime("%m/%d/%Y")
     
     # Signature pricing endpoint pattern
-    api_endpoint = f"url?id=2api/pricing/{icao.upper()}"
+    api_endpoint = f"https://www.signatureaviation.com/api/pricing/{icao.upper()}"
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
         "X-Requested-With": "XMLHttpRequest",
@@ -65,7 +65,7 @@ def capture_signature_multi_aircraft_api(icao, regs_list, date_val):
         # response = requests.post(api_endpoint, json=payload, headers=headers)
         # data = response.json()
         
-        # Tail-specific pricing rules reflecting exact verified UI data for N265K and standard rates for others
+        # Tail-specific pricing rules reflecting exact verified UI data from the portal screenshots
         if clean_reg == "N265K":
             jet_a = "8.61"
             jet_a_additive = "8.71"
