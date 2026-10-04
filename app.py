@@ -8,12 +8,12 @@ from datetime import datetime
 # Page Configuration
 st.set_page_config(
     page_title="Signature Aviation Live API & Fleet Tracker",
-    page_icon="✈️️",
+    page_icon="✈️",
     layout="wide"
 )
 
-st.title("✈️ Signature Aviation — Live API Scraper (Schema Parser)")
-st.markdown("This version directly targets Signature's `priceTiers` array and `customerPrice` schema for Jet A pricing.")
+st.title("✈️ Signature Aviation — Live API Scraper (Tiered Pricing)")
+st.markdown("Extracts Jet A volume discount tiers directly from `priceTiers` array and excludes Avgas.")
 
 # Default Options & Mapping Constants
 ALL_STATIONS = {
@@ -98,41 +98,52 @@ def fetch_live_signature_pricing(stations_list, aircraft_list, date_val):
             except Exception as e:
                 response_json = {"error": str(e)}
 
-            def parse_signature_json_schema(data):
+            def extract_signature_pricing(data):
                 extracted = {
-                    "jet_a_tier1": "N/A",  # 0 - 300 GLL
-                    "jet_a_tier2": "N/A",  # 301 - 1200 GLL
+                    "jet_a_tier1": "N/A",  # 0-300 GLL
+                    "jet_a_tier2": "N/A",  # 301-1200 GLL
                     "jet_a_tier3": "N/A",  # 1201+ GLL
-                    "handling": "N/A",
-                    "handling_details": "N/A",
-                    "infra": "N/A",
-                    "special_event": "N/A", 
-                    "gpu": "N/A",
-                    "hangar": "N/A",
-                    "lav": "N/A",
-                    "water": "N/A"
+                    "handling": "N/A", "handling_details": "N/A",
+                    "infra": "N/A", "special_event": "N/A", 
+                    "gpu": "N/A", "hangar": "N/A", "lav": "N/A", "water": "N/A"
                 }
+
+                # Helper to extract monetary prices while ignoring quantity ranges and discounts
+                def get_all_prices(node_dict):
+                    nums = []
+                    ignore_keys = {"minquantity", "maxquantity", "discountamount", "quantity", "accountnumber", "modelnumber", "baseid"}
+                    def _extract(n):
+                        if isinstance(n, dict):
+                            for k, v in n.items():
+                                if str(k).lower() in ignore_keys:
+                                    continue
+                                if isinstance(v, (int, float)):
+                                    if any(x in str(k).lower() for x in ["price", "customerprice", "retailprice", "fee", "amount"]):
+                                        nums.append(float(v))
+                                elif isinstance(v, str) and re.match(r"^\d+\.\d{2}$", v):
+                                    nums.append(float(v))
+                                else:
+                                    _extract(v)
+                        elif isinstance(n, list):
+                            for i in n:
+                                _extract(i)
+                    _extract(node_dict)
+                    valid_prices = sorted(list(set([p for p in nums if 0.1 < p < 10000])), reverse=True)
+                    return valid_prices
 
                 def traverse(node):
                     if isinstance(node, dict):
-                        service_code = str(node.get("serviceCode", "")).upper()
-                        service_name = str(node.get("serviceName", "")).lower()
-                        name_str = " ".join([
-                            str(node.get("name", "")),
-                            str(node.get("description", "")),
-                            str(node.get("productName", "")),
-                            service_name
-                        ]).lower()
-
-                        # Exclude Avgas/100LL items completely
-                        if "100ll" in name_str or "avgas" in name_str:
+                        dict_strings = " ".join([str(v).lower() for k, v in node.items() if isinstance(v, str)])
+                        
+                        # Explicitly skip Avgas items
+                        if "100ll" in dict_strings or "avgas" in dict_strings:
                             return
 
-                        # Target Jet A / JET-A explicitly
-                        if service_code == "JET-A" or "jet a" in name_str or "jeta" in name_str or "additive" in name_str:
+                        # Check for Jet A service node
+                        if "JET-A" in str(node.get("serviceCode", "")).upper() or "jet a" in dict_strings or "additive" in dict_strings:
+                            # 1. Direct parsing from priceTiers array if available
                             price_tiers = node.get("priceTiers")
                             if isinstance(price_tiers, list) and len(price_tiers) > 0:
-                                # Sort tiers by minQuantity
                                 sorted_tiers = sorted(
                                     [t for t in price_tiers if isinstance(t, dict) and "price" in t],
                                     key=lambda x: x.get("minQuantity", 0)
@@ -141,41 +152,42 @@ def fetch_live_signature_pricing(stations_list, aircraft_list, date_val):
                                     extracted["jet_a_tier1"] = f"{float(sorted_tiers[0]['price']):.2f}"
                                     extracted["jet_a_tier2"] = f"{float(sorted_tiers[1]['price']):.2f}"
                                     extracted["jet_a_tier3"] = f"{float(sorted_tiers[2]['price']):.2f}"
-                                elif len(sorted_tiers) > 0:
+                                elif len(sorted_tiers) == 2:
+                                    extracted["jet_a_tier1"] = f"{float(sorted_tiers[0]['price']):.2f}"
+                                    extracted["jet_a_tier2"] = f"{float(sorted_tiers[1]['price']):.2f}"
+                                elif len(sorted_tiers) == 1:
                                     extracted["jet_a_tier1"] = f"{float(sorted_tiers[0]['price']):.2f}"
                             else:
-                                customer_price = node.get("customerPrice") or node.get("price") or node.get("retailPrice")
-                                if customer_price is not None:
-                                    extracted["jet_a_tier1"] = f"{float(customer_price):.2f}"
+                                # Fallback to general price lookup
+                                prices = get_all_prices(node)
+                                if len(prices) >= 3:
+                                    extracted["jet_a_tier1"] = f"{prices[0]:.2f}"
+                                    extracted["jet_a_tier2"] = f"{prices[1]:.2f}"
+                                    extracted["jet_a_tier3"] = f"{prices[2]:.2f}"
+                                elif len(prices) > 0:
+                                    extracted["jet_a_tier1"] = f"{prices[-1]:.2f}"
 
-                        # Parse Handling and Other Fees
-                        elif "handling" in name_str or "ramp" in name_str:
-                            price_val = node.get("customerPrice") or node.get("price") or node.get("fee") or node.get("amount")
-                            if price_val is not None:
-                                extracted["handling"] = f"{float(price_val):.2f}"
+                        # Parse non-fuel fees
+                        elif "handling" in dict_strings or "ramp" in dict_strings:
+                            prices = get_all_prices(node)
+                            if prices: extracted["handling"] = f"{prices[-1]:.2f}"
                             for dk in ["serviceDetails", "details", "waiverText", "notes"]:
-                                if node.get(dk):
-                                    extracted["handling_details"] = str(node.get(dk))
-                        elif "infrastructure" in name_str:
-                            price_val = node.get("customerPrice") or node.get("price") or node.get("fee") or node.get("amount")
-                            if price_val is not None:
-                                extracted["infra"] = f"{float(price_val):.2f}"
-                        elif "gpu" in name_str or "ground power" in name_str:
-                            price_val = node.get("customerPrice") or node.get("price") or node.get("fee") or node.get("amount")
-                            if price_val is not None:
-                                extracted["gpu"] = f"{float(price_val):.2f}"
-                        elif "hangar" in name_str:
-                            price_val = node.get("customerPrice") or node.get("price") or node.get("fee") or node.get("amount")
-                            if price_val is not None:
-                                extracted["hangar"] = f"{float(price_val):.2f}"
-                        elif "lavatory" in name_str or "lav " in name_str:
-                            price_val = node.get("customerPrice") or node.get("price") or node.get("fee") or node.get("amount")
-                            if price_val is not None:
-                                extracted["lav"] = f"{float(price_val):.2f}"
-                        elif "water" in name_str:
-                            price_val = node.get("customerPrice") or node.get("price") or node.get("fee") or node.get("amount")
-                            if price_val is not None:
-                                extracted["water"] = f"{float(price_val):.2f}"
+                                if node.get(dk): extracted["handling_details"] = str(node.get(dk))
+                        elif "infrastructure" in dict_strings:
+                            prices = get_all_prices(node)
+                            if prices: extracted["infra"] = f"{prices[-1]:.2f}"
+                        elif "gpu" in dict_strings or "ground power" in dict_strings:
+                            prices = get_all_prices(node)
+                            if prices: extracted["gpu"] = f"{prices[-1]:.2f}"
+                        elif "hangar" in dict_strings:
+                            prices = get_all_prices(node)
+                            if prices: extracted["hangar"] = f"{prices[-1]:.2f}"
+                        elif "lavatory" in dict_strings or "lav " in dict_strings:
+                            prices = get_all_prices(node)
+                            if prices: extracted["lav"] = f"{prices[-1]:.2f}"
+                        elif "water" in dict_strings:
+                            prices = get_all_prices(node)
+                            if prices: extracted["water"] = f"{prices[-1]:.2f}"
 
                         for val in node.values():
                             traverse(val)
@@ -187,7 +199,7 @@ def fetch_live_signature_pricing(stations_list, aircraft_list, date_val):
                 return extracted
 
             if api_success and response_json:
-                parsed = parse_signature_json_schema(response_json)
+                parsed = extract_signature_pricing(response_json)
                 tier1_val = parsed["jet_a_tier1"]
                 tier2_val = parsed["jet_a_tier2"]
                 tier3_val = parsed["jet_a_tier3"]
@@ -202,6 +214,7 @@ def fetch_live_signature_pricing(stations_list, aircraft_list, date_val):
             else:
                 special_event_val = "N/A"
                 if clean_icao == "FSM":
+                    # Fallback based on known site data
                     tier1_val = "7.69"
                     tier2_val = "7.41"
                     tier3_val = "7.14"
@@ -271,18 +284,19 @@ if st.button("Execute Live API Query", type="primary"):
         records, debug_infos = fetch_live_signature_pricing(stations_to_query, aircraft_to_query, selected_date)
         
         if enable_debug:
-            st.subheader("🛠️ Debug Inspector — Isolated Fuel Price Data")
-            with st.expander("View Outbound Production URLs & Fuel JSON Nodes", expanded=True):
+            st.subheader("🛠️ Debug Inspector — Isolated Fuel & Full Payload")
+            with st.expander("View Outbound Production URLs & Responses", expanded=True):
                 for idx, dbg in enumerate(debug_infos):
                     st.markdown(f"**Request #{idx+1} — {dbg['station']} | {dbg['registration']} | HTTP {dbg['status_code']}**")
                     
                     raw_json = dbg.get("live_response_json", {})
                     
+                    # Extract specifically the Jet A fuel node for inspection
                     fuel_nodes = []
                     def extract_fuel_nodes(node):
                         if isinstance(node, dict):
                             node_str = json.dumps(node).lower()
-                            if "jet a" in node_str or "jeta" in node_str or "priceTiers" in node_str:
+                            if "jet a" in node_str or "jeta" in node_str or "pricetiers" in node_str:
                                 if any(k in node for k in ["price", "customerPrice", "priceTiers", "tiers", "rates"]):
                                     fuel_nodes.append(node)
                             for v in node.values():
@@ -295,12 +309,11 @@ if st.button("Execute Live API Query", type="primary"):
                     
                     col1, col2 = st.columns(2)
                     with col1:
-                        st.markdown("**Isolated Fuel Price JSON Node:**")
+                        st.markdown("**Isolated Jet A Fuel JSON Node:**")
                         if fuel_nodes:
                             st.json(fuel_nodes)
                         else:
-                            st.warning("No explicit fuel key matched in JSON response. Full payload below:")
-                            st.json(raw_json)
+                            st.info("No standalone fuel node extracted.")
                     with col2:
                         st.markdown("**Full Raw Response Payload:**")
                         st.json(raw_json)
