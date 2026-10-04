@@ -28,7 +28,7 @@ st.sidebar.header("Parameters & Selection Mode")
 # Airport Selection Mode
 station_mode = st.sidebar.radio("Airport Selection Mode", ["Single Airport", "All Airports"])
 if station_mode == "Single Airport":
-    selected_station = st.sidebar.selectbox("Select Airport ICAO", ALL_STATIONS, index=0)
+    selected_station = st.sidebar.selectbox("Select Airport ICAO", ALL_STATIONS, index=1) # Default to FSM
     stations_to_query = [selected_station]
 else:
     stations_to_query = ALL_STATIONS
@@ -39,7 +39,7 @@ st.sidebar.markdown("---")
 # Aircraft Selection Mode
 aircraft_mode = st.sidebar.radio("Aircraft Selection Mode", ["Single Aircraft", "All Aircraft (Fleet)"])
 if aircraft_mode == "Single Aircraft":
-    selected_aircraft = st.sidebar.selectbox("Select Aircraft Registration", DEFAULT_FLEET, index=0)
+    selected_aircraft = st.sidebar.selectbox("Select Aircraft Registration", DEFAULT_FLEET, index=1) # Default to N265K
     aircraft_to_query = [selected_aircraft]
 else:
     aircraft_to_query = DEFAULT_FLEET
@@ -54,7 +54,7 @@ def capture_signature_pricing_api(stations_list, aircraft_list, date_val):
     """
     Simulates the exact API call structure required for Signature Aviation, 
     dynamically looping through selected stations and aircraft tails to build the payload.
-    Sets 'Jet A' to N/A and maps Jet A w/ Additive to correct verified pricing.
+    Maps accurate pricing and fees for FSM (including specific tail pricing for N265K and others) and BUF.
     """
     formatted_date = date_val.strftime("%m/%d/%Y")
     records = []
@@ -84,12 +84,22 @@ def capture_signature_pricing_api(stations_list, aircraft_list, date_val):
             # Station and tail-specific rules reflecting verified portal values
             if clean_icao == "FSM":
                 jet_a_additive_val = "7.69"
-                handling = "560.00"
-                infrastructure = "26.00"
-                gpu = "114.00"
-                hangar = "Contact FBO"
-                lavatory = "197.10"
-                water = "92.00"
+                if clean_reg == "N265K":
+                    # Verified FSM portal values for N265K from screenshot
+                    handling = "940.00"
+                    infrastructure = "26.00"
+                    gpu = "114.00"
+                    hangar = "Contact FBO"
+                    lavatory = "208.05"
+                    water = "92.00"
+                else:
+                    # Default FSM values for other tails (e.g. N730K)
+                    handling = "560.00"
+                    infrastructure = "26.00"
+                    gpu = "114.00"
+                    hangar = "Contact FBO"
+                    lavatory = "197.10"
+                    water = "92.00"
             else:  # BUF Station Rules
                 jet_a_additive_val = "8.71"
                 if clean_reg in ["N265K", "N316K"]:
