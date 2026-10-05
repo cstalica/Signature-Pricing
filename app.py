@@ -175,13 +175,9 @@ def extract_signature_pricing(data):
         "service_code": "JET-A",
         "service_name": "Jet A (with additive)",
         "retail_price": "N/A",
-        "unit_of_measure": "GLL",
         "jet_a_tier1": "N/A",
-        "jet_a_tier1_discount": "N/A",
         "jet_a_tier2": "N/A",
-        "jet_a_tier2_discount": "N/A",
         "jet_a_tier3": "N/A",
-        "jet_a_tier3_discount": "N/A",
         "handling": "N/A",
         "waiver_min_gallons": "N/A",
         "handling_details": "N/A",
@@ -210,8 +206,6 @@ def extract_signature_pricing(data):
                 extracted["service_code"] = str(item.get("serviceCode"))
             if item.get("serviceName"):
                 extracted["service_name"] = str(item.get("serviceName"))
-            if item.get("unitOfMeasure"):
-                extracted["unit_of_measure"] = str(item.get("unitOfMeasure"))
 
             retail_val = item.get("retailPrice") or item.get("retail_price") or item.get("basePrice")
             if retail_val is not None:
@@ -226,18 +220,12 @@ def extract_signature_pricing(data):
                 if len(sorted_tiers) >= 1:
                     t1_price = sorted_tiers[0].get("price") or sorted_tiers[0].get("customerPrice")
                     extracted["jet_a_tier1"] = f"{float(t1_price):.2f}"
-                    if "discountAmount" in sorted_tiers[0]:
-                        extracted["jet_a_tier1_discount"] = f"{float(sorted_tiers[0]['discountAmount']):.2f}"
                 if len(sorted_tiers) >= 2:
                     t2_price = sorted_tiers[1].get("price") or sorted_tiers[1].get("customerPrice")
                     extracted["jet_a_tier2"] = f"{float(t2_price):.2f}"
-                    if "discountAmount" in sorted_tiers[1]:
-                        extracted["jet_a_tier2_discount"] = f"{float(sorted_tiers[1]['discountAmount']):.2f}"
                 if len(sorted_tiers) >= 3:
                     t3_price = sorted_tiers[2].get("price") or sorted_tiers[2].get("customerPrice")
                     extracted["jet_a_tier3"] = f"{float(t3_price):.2f}"
-                    if "discountAmount" in sorted_tiers[2]:
-                        extracted["jet_a_tier3_discount"] = f"{float(sorted_tiers[2]['discountAmount']):.2f}"
             else:
                 cust_price = item.get("customerPrice") or item.get("price") or item.get("discountedPrice")
                 if cust_price is not None:
@@ -260,11 +248,18 @@ def extract_signature_pricing(data):
         if "HANDLING" in svc_code or "handling" in full_str or "ramp" in full_str:
             if price_val is not None:
                 extracted["handling"] = f"{float(price_val):.2f}"
-            if item.get("waiverMinGallons") is not None:
-                extracted["waiver_min_gallons"] = str(item.get("waiverMinGallons"))
-            waiver_text = item.get("waiverText") or item.get("serviceDetails") or item.get("details") or item.get("notes")
-            if waiver_text:
-                extracted["handling_details"] = str(waiver_text)
+            
+            waiver_gallons_val = item.get("waiverMinGallons")
+            if waiver_gallons_val is not None:
+                extracted["waiver_min_gallons"] = str(waiver_gallons_val)
+                extracted["handling_details"] = str(waiver_gallons_val)
+            else:
+                waiver_text = item.get("waiverText") or item.get("serviceDetails") or item.get("details") or item.get("notes")
+                if waiver_text:
+                    import re
+                    numbers = re.findall(r'\d+', str(waiver_text))
+                    if numbers:
+                        extracted["handling_details"] = numbers[0]
         elif "INFRASTRUCTURE" in svc_code or "infrastructure" in full_str:
             if price_val is not None:
                 extracted["infra"] = f"{float(price_val):.2f}"
