@@ -48,6 +48,19 @@ selected_date = st.sidebar.date_input("Arrival Date", value=datetime.today())
 st.sidebar.markdown("---")
 enable_debug = st.sidebar.checkbox("Enable Live API Debug Inspector", value=True)
 
+# Create a fingerprint/state signature to automatically detect sidebar option changes
+current_selection_state = f"{stations_to_query}-{aircraft_to_query}-{selected_date}"
+if "last_selection_state" not in st.session_state:
+    st.session_state["last_selection_state"] = current_selection_state
+elif st.session_state["last_selection_state"] != current_selection_state:
+    st.session_state["last_selection_state"] = current_selection_state
+    # Automatically clear old cached records when selections change
+    if "last_records" in st.session_state:
+        del st.session_state["last_records"]
+    if "last_debug" in st.session_state:
+        del st.session_state["last_debug"]
+    st.rerun()
+
 def generate_mock_signature_payload(icao, reg, date_str):
     is_fsm = (icao == "FSM")
     
@@ -66,12 +79,12 @@ def generate_mock_signature_payload(icao, reg, date_str):
         hangar_val = 0.0
         lav_price = 208.05 if is_heavy else 197.10
     else:
-        handling_price = 2340.00 if is_heavy else 1395.00
-        waiver_gallons = 750 if is_heavy else 500
-        infra_price = 46.50
-        gpu_price = 186.00
-        hangar_val = 2619.00 if is_heavy else 1878.00
-        lav_price = 345.83 if is_heavy else 326.25
+        handling_price = 1560.00 if is_heavy else 1395.00
+        waiver_gallons = 520 if is_heavy else 500
+        infra_price = 31.00
+        gpu_price = 124.00
+        hangar_val = 1746.00 if is_heavy else 1450.00
+        lav_price = 230.55 if is_heavy else 210.00
 
     fuel_pricing = [
         {
@@ -119,8 +132,8 @@ def generate_mock_signature_payload(icao, reg, date_str):
             "serviceName": "Avgas 100LL",
             "productName": "Avgas 100LL",
             "unitOfMeasure": "GLL",
-            "retailPrice": 10.50,
-            "customerPrice": 10.50,
+            "retailPrice": 8.60 if not is_fsm else 10.50,
+            "customerPrice": 8.60 if not is_fsm else 10.50,
             "priceTiers": []
         }
     ]
@@ -387,13 +400,14 @@ def fetch_live_signature_pricing(stations_list, aircraft_list, date_val):
     
     return records, debug_logs
 
-if st.button("Execute Live API Query", type="primary"):
+# Automatically fetch data on load or when parameters update
+if "last_records" not in st.session_state:
     with st.spinner("Processing API Data..."):
         records, debug_infos = fetch_live_signature_pricing(stations_to_query, aircraft_to_query, selected_date)
         st.session_state["last_records"] = records
         st.session_state["last_debug"] = debug_infos
 
-# Display data if available in session state
+# Display data from session state
 if "last_records" in st.session_state:
     records = st.session_state["last_records"]
     debug_infos = st.session_state["last_debug"]
