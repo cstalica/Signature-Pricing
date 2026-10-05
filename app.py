@@ -180,7 +180,6 @@ def extract_signature_pricing(data):
         "jet_a_tier3": "N/A",
         "handling": "N/A",
         "waiver_min_gallons": "N/A",
-        "handling_details": "N/A",
         "infra": "N/A",
         "special_event": "N/A", 
         "gpu": "N/A",
@@ -252,14 +251,13 @@ def extract_signature_pricing(data):
             waiver_gallons_val = item.get("waiverMinGallons")
             if waiver_gallons_val is not None:
                 extracted["waiver_min_gallons"] = str(waiver_gallons_val)
-                extracted["handling_details"] = str(waiver_gallons_val)
             else:
                 waiver_text = item.get("waiverText") or item.get("serviceDetails") or item.get("details") or item.get("notes")
                 if waiver_text:
                     import re
                     numbers = re.findall(r'\d+', str(waiver_text))
                     if numbers:
-                        extracted["handling_details"] = numbers[0]
+                        extracted["waiver_min_gallons"] = numbers[0]
         elif "INFRASTRUCTURE" in svc_code or "infrastructure" in full_str:
             if price_val is not None:
                 extracted["infra"] = f"{float(price_val):.2f}"
@@ -353,7 +351,6 @@ def fetch_live_signature_pricing(stations_list, aircraft_list, date_val):
                 "Jet A 1201+ GLL ($)": parsed["jet_a_tier3"],
                 "Handling Fee ($)": parsed["handling"],
                 "Waiver Min Gallons": parsed["waiver_min_gallons"],
-                "Waiver Description": parsed["handling_details"],
                 "Infrastructure Fee ($)": parsed["infra"],
                 "Special Event Fee ($)": parsed["special_event"],
                 "GPU ($)": parsed["gpu"],
