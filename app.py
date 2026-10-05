@@ -14,9 +14,10 @@ st.set_page_config(
 st.title("✈️ Signature Aviation — Live API & FBO Inspector")
 st.markdown("Select an airport below to pull live rates or fallback structures directly into your fleet table.")
 
-# Station Mapping & Constants
+# Station Mapping & Constants (OPF Added)
 ALL_STATIONS = {
     "MIA": {"baseId": "L23", "baseCode": "MIA", "fboUrl": "https://www.signatureaviation.com/locations/MIA?fboDetailId=L23"},
+    "OPF": {"baseId": "L26", "baseCode": "OPF", "fboUrl": "https://www.signatureaviation.com/locations/OPF?fboDetailId=L26"},
     "TMB": {"baseId": "L24", "baseCode": "TMB", "fboUrl": "https://www.signatureaviation.com/locations/TMB?fboDetailId=L24"},
     "BUF": {"baseId": "B70", "baseCode": "BUF", "fboUrl": "https://www.signatureaviation.com/locations/BUF?fboDetailId=B70"},
     "FSM": {"baseId": "B80", "baseCode": "FSM", "fboUrl": "https://www.signatureaviation.com/locations/FSM?fboDetailId=B80"}
@@ -47,7 +48,20 @@ def get_static_fallback(icao, reg):
     """Provides fallback rate structures matching active FBO schedules when direct API calls are blocked."""
     is_heavy = reg in ["N265K", "N316K"]
     
-    if icao == "MIA":
+    if icao == "OPF":
+        return {
+            "retail_price": "$9.50",
+            "jet_a_tier1": "$6.21",
+            "jet_a_tier2": "$6.00",
+            "jet_a_tier3": "$5.80",
+            "handling": "$1,450.00" if is_heavy else "$810.00",
+            "waiver_min_gallons": "520 gal" if is_heavy else "310 gal",
+            "infra": "$38.00",
+            "gpu": "$165.00" if is_heavy else "$132.68",
+            "hangar": "$1,200.00" if is_heavy else "$800.00",
+            "lav": "$200.00"
+        }
+    elif icao == "MIA":
         return {
             "retail_price": "$12.12",
             "jet_a_tier1": "$10.00",
@@ -86,7 +100,7 @@ def get_static_fallback(icao, reg):
             "hangar": "Call FBO",
             "lav": "$208.05"
         }
-    else: # BUF
+    else:  # BUF
         return {
             "retail_price": "$9.17",
             "jet_a_tier1": "$8.61",
@@ -103,7 +117,7 @@ def get_static_fallback(icao, reg):
 
 def fetch_signature_pricing(icao, aircraft_list, date_val):
     formatted_date = date_val.strftime("%m/%d/%Y")
-    station_info = ALL_STATIONS.get(icao, ALL_STATIONS["MIA"])
+    station_info = ALL_STATIONS.get(icao, ALL_STATIONS["OPF"])
     records = []
     
     session = requests.Session()
@@ -113,7 +127,6 @@ def fetch_signature_pricing(icao, aircraft_list, date_val):
         "Accept-Language": "en-US,en;q=0.9"
     }
 
-    # Attempt page request
     page_html = ""
     try:
         res = session.get(station_info["fboUrl"], headers=headers, timeout=5)
@@ -126,11 +139,8 @@ def fetch_signature_pricing(icao, aircraft_list, date_val):
         clean_reg = reg.strip().upper()
         parsed_data = None
         
-        # Parse HTML if page fetched successfully
         if page_html:
             soup = BeautifulSoup(page_html, "html.parser")
-            # Extract basic HTML text rendered values if present
-            # If dynamic JavaScript hid the data, fall back gracefully
             pass
 
         if not parsed_data:
