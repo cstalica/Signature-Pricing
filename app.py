@@ -14,7 +14,7 @@ st.set_page_config(
 st.title("✈️ Signature Aviation — Fuel Pricing Array Inspector")
 st.markdown("Extracts and displays live `fuelPricing` and volume tiers directly from Signature's API schema payloads.")
 
-# Default Options & Mapping Constants
+# Default Options & Mapping Constants (Corrected BUF baseId to B70)
 ALL_STATIONS = {
     "BUF": {"baseId": "B70", "baseCode": "BUF"},
     "FSM": {"baseId": "B80", "baseCode": "FSM"}
@@ -31,7 +31,7 @@ st.sidebar.header("Parameters & Configuration")
 
 station_mode = st.sidebar.radio("Airport Selection Mode", ["Single Airport", "All Airports"])
 if station_mode == "Single Airport":
-    selected_station = st.sidebar.selectbox("Select Airport ICAO", list(ALL_STATIONS.keys()), index=1)
+    selected_station = st.sidebar.selectbox("Select Airport ICAO", list(ALL_STATIONS.keys()), index=0)
     stations_to_query = [selected_station]
 else:
     stations_to_query = list(ALL_STATIONS.keys())
@@ -306,7 +306,7 @@ def fetch_live_signature_pricing(stations_list, aircraft_list, date_val):
 
     for icao in stations_list:
         clean_icao = icao.strip().upper()
-        station_info = ALL_STATIONS.get(clean_icao, {"baseId": "B80", "baseCode": clean_icao})
+        station_info = ALL_STATIONS.get(clean_icao, {"baseId": "B70", "baseCode": clean_icao})
         
         for reg in aircraft_list:
             clean_reg = reg.strip().upper()
