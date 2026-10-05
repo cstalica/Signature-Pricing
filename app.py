@@ -11,10 +11,16 @@ st.set_page_config(
 )
 
 st.title("✈️ Signature Aviation — Live FBO Service Fees Inspector")
-st.markdown("Extracts and displays live handling, infrastructure, and auxiliary service fees using airport base codes directly.")
+st.markdown("Extracts and displays live handling, infrastructure, and auxiliary service fees using verified station base IDs.")
 
-# Simplified station list using base codes only
-STATION_CODES = ["BUF", "BZN", "FSM", "TMB", "MIA"]
+# Stations with explicit internal baseIds
+ALL_STATIONS = {
+    "BUF": {"baseId": "B70", "baseCode": "BUF"},
+    "BZN": {"baseId": "P55", "baseCode": "BZN"},
+    "FSM": {"baseId": "B80", "baseCode": "FSM"},
+    "TMB": {"baseId": "L24", "baseCode": "TMB"},
+    "MIA": {"baseId": "L23", "baseCode": "MIA"}
+}
 DEFAULT_FLEET = ["N730K", "N265K", "N316K", "N681K"]
 
 # Fixed Account Credentials
@@ -27,10 +33,10 @@ st.sidebar.header("Parameters & Configuration")
 
 station_mode = st.sidebar.radio("Airport Selection Mode", ["Single Airport", "All Airports"])
 if station_mode == "Single Airport":
-    selected_station = st.sidebar.selectbox("Select Airport ICAO", STATION_CODES, index=0)
+    selected_station = st.sidebar.selectbox("Select Airport ICAO", list(ALL_STATIONS.keys()), index=0)
     stations_to_query = [selected_station]
 else:
-    stations_to_query = STATION_CODES
+    stations_to_query = list(ALL_STATIONS.keys())
 
 aircraft_mode = st.sidebar.radio("Aircraft Selection Mode", ["Single Aircraft", "All Aircraft (Fleet)"])
 if aircraft_mode == "Single Aircraft":
@@ -82,15 +88,15 @@ def fetch_live_signature_fees(stations_list, aircraft_list, date_val, debug_mode
 
     for icao in stations_list:
         clean_icao = icao.strip().upper()
+        station_info = ALL_STATIONS.get(clean_icao, {"baseId": clean_icao, "baseCode": clean_icao})
         
         for reg in aircraft_list:
             clean_reg = reg.strip().upper()
             if not clean_reg: continue
                 
-            # Uses baseCode for both baseId and baseCode fields
             full_url = (
                 f"https://new-prod-api.signatureaviation.com/api/rest/pricing/services/discount?"
-                f"baseId={clean_icao}&baseCode={clean_icao}&pricingDate={encoded_date}&"
+                f"baseId={station_info['baseId']}&baseCode={station_info['baseCode']}&pricingDate={encoded_date}&"
                 f"modelNumber={MODEL_NUMBER}&tailNumber={clean_reg}&"
                 f"accountNumber={ACCOUNT_NUMBER}&accountId={ACCOUNT_ID}"
             )
@@ -106,7 +112,7 @@ def fetch_live_signature_fees(stations_list, aircraft_list, date_val, debug_mode
                 res = requests.get(full_url, headers=headers, timeout=5)
                 
                 if debug_mode:
-                    with st.expander(f"API GET Request: {clean_icao} / {clean_reg} (Status: {res.status_code})"):
+                    with st.expander(f"API GET Request: {clean_icao} ({station_info['baseId']}) / {clean_reg} (Status: {res.status_code})"):
                         st.text(f"URL: {full_url}")
                         if res.status_code == 200:
                             st.success("Request Successful (200 OK)")
