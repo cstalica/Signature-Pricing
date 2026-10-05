@@ -14,208 +14,101 @@ st.set_page_config(
 st.title("✈️ Signature Aviation — Live FBO Service Fees Inspector")
 st.markdown("Extracts and displays live handling, infrastructure, and auxiliary service fees using verified station base IDs.")
 
-# Filtered (starts with 'K') and alphabetically sorted stations
+# Filtered (starts with 'K') and alphabetically sorted stations from locations_output.csv
 ALL_STATIONS = {
-    "KAPA": {"baseId": "P66", "baseCode": "APA"},
-    "KBFM": {"baseId": "P27", "baseCode": "BFM"},
+    "KACY": {"baseId": "L27", "baseCode": "ACY"},
+    "KAMA": {"baseId": "B82", "baseCode": "AMA"},
+    "KAPA (B86)": {"baseId": "B86", "baseCode": "APA"},
+    "KAPA (P66)": {"baseId": "P66", "baseCode": "APA"},
+    "KATL": {"baseId": "L35", "baseCode": "ATL"},
+    "KAUS": {"baseId": "P21", "baseCode": "AUS"},
+    "KAVL": {"baseId": "L09", "baseCode": "AVL"},
     "KBCT": {"baseId": "P54", "baseCode": "BCT"},
     "KBDL": {"baseId": "P53", "baseCode": "BDL"},
     "KBED": {"baseId": "P74", "baseCode": "BED"},
+    "KBFI": {"baseId": "L20", "baseCode": "BFI"},
+    "KBFM": {"baseId": "P27", "baseCode": "BFM"},
+    "KBJC": {"baseId": "L54", "baseCode": "BJC"},
+    "KBKL": {"baseId": "L07", "baseCode": "BKL"},
     "KBNA": {"baseId": "V52", "baseCode": "BNA"},
     "KBOS": {"baseId": "V42", "baseCode": "BOS"},
+    "KBTR": {"baseId": "L52", "baseCode": "BTR"},
+    "KBUF": {"baseId": "B85", "baseCode": "BUF"},
+    "KBWI": {"baseId": "B09", "baseCode": "BWI"},
     "KBZN": {"baseId": "P55", "baseCode": "BZN"},
-    "KDAL": {"baseId": "P82", "baseCode": "DAL"},
+    "KCHO": {"baseId": "L48", "baseCode": "CHO"},
+    "KCHS": {"baseId": "L16", "baseCode": "CHS"},
+    "KCID": {"baseId": "L36", "baseCode": "CID"},
+    "KCMH": {"baseId": "L14", "baseCode": "CMH"},
+    "KDAL (B84)": {"baseId": "B84", "baseCode": "DAL"},
+    "KDAL (L45)": {"baseId": "L45", "baseCode": "DAL"},
     "KDAL (P63)": {"baseId": "P63", "baseCode": "DAL"},
-    "KDJT": {"baseId": "P61", "baseCode": "DJT"},
+    "KDAL (P82)": {"baseId": "P82", "baseCode": "DAL"},
+    "KDCA": {"baseId": "B10", "baseCode": "DCA"},
     "KDEN": {"baseId": "P83", "baseCode": "DEN"},
+    "KDJT (K60)": {"baseId": "K60", "baseCode": "DJT"},
+    "KDJT (P61)": {"baseId": "P61", "baseCode": "DJT"},
     "KDSM": {"baseId": "V47", "baseCode": "DSM"},
+    "KDTW": {"baseId": "P09", "baseCode": "DTW"},
+    "KEFD": {"baseId": "L59", "baseCode": "EFD"},
     "KEGE": {"baseId": "P93", "baseCode": "EGE"},
+    "KEWR": {"baseId": "B07", "baseCode": "EWR"},
+    "KEYW": {"baseId": "L32", "baseCode": "EYW"},
+    "KF45": {"baseId": "L31", "baseCode": "F45"},
     "KFAT": {"baseId": "P35", "baseCode": "FAT"},
+    "KFAY": {"baseId": "L39", "baseCode": "FAY"},
+    "KFDK": {"baseId": "L11", "baseCode": "FDK"},
     "KFLL": {"baseId": "P84", "baseCode": "FLL"},
-    "KHPN": {"baseId": "P60", "baseCode": "HPN"},
+    "KFOK": {"baseId": "P00", "baseCode": "FOK"},
+    "KFSD": {"baseId": "L08", "baseCode": "FSD"},
+    "KFSM": {"baseId": "B80", "baseCode": "FSM"},
+    "KFTY": {"baseId": "I71", "baseCode": "FTY"},
+    "KFXE": {"baseId": "B95", "baseCode": "FXE"},
+    "KGEG": {"baseId": "L56", "baseCode": "GEG"},
+    "KGRR": {"baseId": "L38", "baseCode": "GRR"},
+    "KGSO": {"baseId": "L22", "baseCode": "GSO"},
+    "KHOU": {"baseId": "I72", "baseCode": "HOU"},
     "KHPN (P57)": {"baseId": "P57", "baseCode": "HPN"},
+    "KHPN (P60)": {"baseId": "P60", "baseCode": "HPN"},
+    "KHSV": {"baseId": "P25", "baseCode": "HSV"},
+    "KHWD": {"baseId": "I53", "baseCode": "HWD"},
     "KHXD": {"baseId": "P37", "baseCode": "HXD"},
+    "KIAD": {"baseId": "P02", "baseCode": "IAD"},
+    "KIAH": {"baseId": "L46", "baseCode": "IAH"},
+    "KICT": {"baseId": "I75", "baseCode": "ICT"},
     "KIND": {"baseId": "P85", "baseCode": "IND"},
+    "KINT": {"baseId": "L40", "baseCode": "INT"},
+    "KISM": {"baseId": "I70", "baseCode": "ISM"},
+    "KIXD": {"baseId": "G42", "baseCode": "IXD"},
     "KJAX": {"baseId": "P73", "baseCode": "JAX"},
+    "KLAS": {"baseId": "H10", "baseCode": "LAS"},
+    "KLAX": {"baseId": "L29", "baseCode": "LAX"},
+    "KLEX": {"baseId": "B83", "baseCode": "LEX"},
+    "KLFT": {"baseId": "L12", "baseCode": "LFT"},
     "KLGB": {"baseId": "P31", "baseCode": "LGB"},
+    "KLIT": {"baseId": "B90", "baseCode": "LIT"},
+    "KLRD": {"baseId": "L25", "baseCode": "LRD"},
+    "KLUK": {"baseId": "L15", "baseCode": "LUK"},
+    "KMAF": {"baseId": "L55", "baseCode": "MAF"},
+    "KMCI": {"baseId": "G43", "baseCode": "MCI"},
+    "KMCO": {"baseId": "P08", "baseCode": "MCO"},
+    "KMDW": {"baseId": "B25", "baseCode": "MDW"},
     "KMEM": {"baseId": "P86", "baseCode": "MEM"},
     "KMHT": {"baseId": "P56", "baseCode": "MHT"},
+    "KMIA": {"baseId": "L23", "baseCode": "MIA"},
+    "KMKC": {"baseId": "G41", "baseCode": "MKC"},
     "KMKE": {"baseId": "V50", "baseCode": "MKE"},
     "KMMU": {"baseId": "P67", "baseCode": "MMU"},
-    "KMSY": {"baseId": "P36", "baseCode": "MSY"},
+    "KMOB": {"baseId": "P26", "baseCode": "MOB"},
+    "KMQS": {"baseId": "L53", "baseCode": "MQS"},
     "KMSP": {"baseId": "V51", "baseCode": "MSP"},
+    "KMSY": {"baseId": "P36", "baseCode": "MSY"},
+    "KNEW": {"baseId": "L13", "baseCode": "NEW"},
+    "KOAK": {"baseId": "L30", "baseCode": "OAK"},
     "KOMA": {"baseId": "P44", "baseCode": "OMA"},
+    "KOPF": {"baseId": "L26", "baseCode": "OPF"},
+    "KORD": {"baseId": "B21", "baseCode": "ORD"},
+    "KORF": {"baseId": "L50", "baseCode": "ORF"},
     "KPDK": {"baseId": "P65", "baseCode": "PDK"},
-    "KPSP": {"baseId": "P87", "baseCode": "PSP"},
-    "KPWK": {"baseId": "P69", "baseCode": "PWK"},
-    "KRST": {"baseId": "P39", "baseCode": "RST"},
-    "KSBA": {"baseId": "P71", "baseCode": "SBA"},
-    "KSDL": {"baseId": "P58", "baseCode": "SDL"},
-    "KSFO": {"baseId": "P88", "baseCode": "SFO"},
-    "KSTP": {"baseId": "P38", "baseCode": "STP"},
-    "KSWF": {"baseId": "P28", "baseCode": "SWF"},
-    "KTEB": {"baseId": "P62", "baseCode": "TEB"},
-    "KVNY": {"baseId": "VNE", "baseCode": "VNY"}
-}
-
-DEFAULT_FLEET = ["N730K", "N265K", "N316K", "N681K"]
-
-# Fixed Account Credentials
-ACCOUNT_NUMBER = "3951"
-ACCOUNT_ID = "1cdf46c1-ee12-df11-b019-005056a16799"
-MODEL_NUMBER = "0"
-
-# Sidebar Controls
-st.sidebar.header("Parameters & Configuration")
-
-station_mode = st.sidebar.radio("Airport Selection Mode", ["Single Airport", "All Airports"])
-if station_mode == "Single Airport":
-    selected_station = st.sidebar.selectbox("Select Airport ICAO", sorted(list(ALL_STATIONS.keys())), index=0)
-    stations_to_query = [selected_station]
-else:
-    stations_to_query = sorted(list(ALL_STATIONS.keys()))
-
-aircraft_mode = st.sidebar.radio("Aircraft Selection Mode", ["Single Aircraft", "All Aircraft (Fleet)"])
-if aircraft_mode == "Single Aircraft":
-    selected_aircraft = st.sidebar.selectbox("Select Aircraft Registration", DEFAULT_FLEET, index=0)
-    aircraft_to_query = [selected_aircraft]
-else:
-    aircraft_to_query = DEFAULT_FLEET
-
-selected_date = st.sidebar.date_input("Arrival Date", value=datetime.today())
-
-st.sidebar.markdown("---")
-enable_debug = st.sidebar.checkbox("Enable Live API Debug Inspector", value=True)
-
-def extract_signature_fees(api_response):
-    extracted = {
-        "handling": "N/A", "waiver_min_gallons": "N/A", "infra": "N/A",
-        "gpu": "N/A", "hangar": "N/A", "lav": "N/A", "water": "N/A"
-    }
-
-    items_list = []
-    if isinstance(api_response, dict):
-        raw_data = api_response.get("data", [])
-        if isinstance(raw_data, list):
-            items_list = raw_data
-
-    for s_item in items_list:
-        if not isinstance(s_item, dict):
-            continue
-        description = str(s_item.get("description", "")).upper()
-        src_code = str(s_item.get("srcProductCode", "")).upper()
-        price = s_item.get("customerPrice")
-        
-        val_str = "N/A"
-        if price is not None and str(price).strip() != "":
-            try:
-                val_str = f"{float(price):.2f}"
-            except ValueError:
-                val_str = str(price)
-
-        if "HANDLING" in description or "HANDLING" in src_code:
-            extracted["handling"] = val_str
-            details = s_item.get("serviceDetails", "")
-            if details:
-                match = re.search(r'(\d+)\s*(?:US\s*)?Gallon', details, re.IGNORECASE)
-                if match:
-                    extracted["waiver_min_gallons"] = match.group(1)
-        elif "INFRASTRUCTURE" in description or "INFRA" in src_code:
-            extracted["infra"] = val_str
-        elif "GROUND POWER UNIT" in description and "START" not in description:
-            extracted["gpu"] = val_str
-        elif "HANGAR" in description or "HANGER" in src_code:
-            extracted["hangar"] = val_str
-        elif "LAVATORY" in description or "LAV" in src_code:
-            extracted["lav"] = val_str
-        elif "WATER" in description:
-            extracted["water"] = val_str
-
-    return extracted
-
-def fetch_live_signature_fees(stations_list, aircraft_list, date_val, debug_mode):
-    formatted_date = date_val.strftime("%m/%d/%Y")
-    encoded_date = formatted_date.replace("/", "%2F")
-    records = []
-    
-    if debug_mode:
-        st.subheader("🔍 Live API Debug Inspector")
-
-    for icao in stations_list:
-        clean_icao = icao.strip().upper()
-        station_info = ALL_STATIONS.get(clean_icao, {"baseId": clean_icao, "baseCode": clean_icao[-3:]})
-        
-        for reg in aircraft_list:
-            clean_reg = reg.strip().upper()
-            if not clean_reg: continue
-                
-            full_url = (
-                f"https://new-prod-api.signatureaviation.com/api/rest/pricing/services/discount?"
-                f"baseId={station_info['baseId']}&baseCode={station_info['baseCode']}&pricingDate={encoded_date}&"
-                f"modelNumber={MODEL_NUMBER}&tailNumber={clean_reg}&"
-                f"accountNumber={ACCOUNT_NUMBER}&accountId={ACCOUNT_ID}"
-            )
-            
-            headers = {
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-                "X-Requested-With": "XMLHttpRequest",
-                "Accept": "application/json, text/plain, */*"
-            }
-            
-            response_json = {}
-            try:
-                res = requests.get(full_url, headers=headers, timeout=5)
-                
-                if debug_mode:
-                    with st.expander(f"API GET Request: {clean_icao} ({station_info['baseId']}) / {clean_reg} (Status: {res.status_code})"):
-                        st.text(f"URL: {full_url}")
-                        if res.status_code == 200:
-                            st.success("Request Successful (200 OK)")
-                            try:
-                                response_json = res.json()
-                                st.json(response_json)
-                            except Exception:
-                                st.warning("Response was 200 OK but could not parse JSON.")
-                                st.text(res.text[:1000])
-                        else:
-                            st.error(f"Request Failed with Status {res.status_code}")
-                            st.code(res.text[:1000])
-                else:
-                    if res.status_code == 200:
-                        response_json = res.json()
-            except Exception as e:
-                if debug_mode:
-                    st.error(f"Network Exception encountered for {clean_icao} / {clean_reg}: {e}")
-
-            parsed = extract_signature_fees(response_json)
-            records.append({
-                "ICAO": clean_icao,
-                "Aircraft Reg": clean_reg,
-                "Date": formatted_date,
-                "Handling Fee": parsed["handling"],
-                "Waiver Min GLL": parsed["waiver_min_gallons"],
-                "Infrastructure Fee": parsed["infra"],
-                "GPU": parsed["gpu"],
-                "Hangar": parsed["hangar"] if parsed["hangar"] != "0.00" else "Call FBO",
-                "Lav Service": parsed["lav"],
-                "Water Service": parsed["water"]
-            })
-    return records
-
-# Fetch live records from API
-records = fetch_live_signature_fees(stations_to_query, aircraft_to_query, selected_date, enable_debug)
-
-st.subheader("📊 Live FBO Service Fees Table")
-df_results = pd.DataFrame(records)
-
-# Display table
-st.dataframe(df_results, use_container_width=True, hide_index=True)
-
-# CSV Download Button
-csv_data = df_results.to_csv(index=False).encode('utf-8')
-st.download_button(
-    label="📥 Download Live Fees Table as CSV",
-    data=csv_data,
-    file_name=f"signature_live_service_fees_{selected_date.strftime('%Y%m%d')}.csv",
-    mime="text/csv"
-)
+    "KPHK": {"baseId": "L33", "baseCode": "PHK"},
+    "KPIE": {"baseId": "P11", "baseCode": "PI
