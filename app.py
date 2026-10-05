@@ -62,14 +62,15 @@ elif st.session_state["last_selection_state"] != current_selection_state:
 
 def generate_mock_signature_payload(icao, reg, date_str):
     is_fsm = (icao == "FSM")
-    
-    # Differentiate pricing/fees dynamically based on aircraft registration weight class
     is_heavy = reg in ["N265K", "N316K"]
     
     retail_jet = 8.55 if is_fsm else 8.71
-    t1_price = 7.69 if is_fsm else 8.71
-    t1_disc = 0.86 if is_fsm else 0.00
+    t1_price = 7.69 if is_fsm else 8.61  # Standard Jet A primary priority price (8.61)
+    t1_disc = 0.86 if is_fsm else 0.10
     
+    additive_retail = 8.55 if is_fsm else 8.71
+    additive_price = 7.69 if is_fsm else 8.71
+
     if is_fsm:
         handling_price = 940.00 if is_heavy else 560.00
         waiver_gallons = 520 if is_heavy else 310
@@ -78,7 +79,6 @@ def generate_mock_signature_payload(icao, reg, date_str):
         hangar_val = 0.0
         lav_price = 208.05 if is_heavy else 197.10
     else:
-        # BUF differentiation between heavy and light fleet aircraft
         handling_price = 1560.00 if is_heavy else 930.00
         waiver_gallons = 520 if is_heavy else 310
         infra_price = 31.00
@@ -123,9 +123,17 @@ def generate_mock_signature_payload(icao, reg, date_str):
             "serviceName": "Jet A (with additive)",
             "productName": "Jet A (with additive)",
             "unitOfMeasure": "GLL",
-            "retailPrice": retail_jet,
-            "customerPrice": t1_price,
-            "priceTiers": []
+            "retailPrice": additive_retail,
+            "customerPrice": additive_price,
+            "priceTiers": [
+                {
+                    "tierName": "0.00 - 300.00 GLL",
+                    "minQuantity": 0.0,
+                    "maxQuantity": 300.0,
+                    "price": additive_price,
+                    "discountAmount": 0.0
+                }
+            ]
         },
         {
             "serviceCode": "100LL",
@@ -218,14 +226,17 @@ def extract_signature_pricing(data):
             continue
         valid_fuel_items.append(item)
 
+    # Prioritize standard Jet A (e.g., 8.61) over Jet A with additive if both are available
     target_fuel_item = None
     for item in valid_fuel_items:
         s_name = str(item.get("serviceName", "")).lower()
         p_name = str(item.get("productName", "")).lower()
-        if "additive" not in s_name and "additive" not in p_name:
+        s_code = str(item.get("serviceCode", "")).upper()
+        if "additive" not in s_name and "additive" not in p_name and "ADDITIVE" not in s_code:
             target_fuel_item = item
             break
     
+    # Fallback to any available fuel item if pure Jet A wasn't found
     if not target_fuel_item and valid_fuel_items:
         target_fuel_item = valid_fuel_items[0]
 
