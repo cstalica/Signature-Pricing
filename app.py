@@ -201,7 +201,6 @@ def extract_signature_pricing(data):
     if isinstance(data, dict) and "fuelPricing" in data and isinstance(data["fuelPricing"], list):
         fuel_items = data["fuelPricing"]
 
-    # Filter out avgas
     valid_fuel_items = []
     for item in fuel_items:
         if not isinstance(item, dict):
@@ -215,7 +214,6 @@ def extract_signature_pricing(data):
             continue
         valid_fuel_items.append(item)
 
-    # If both Jet A and Jet A (with additive) exist, select strictly plain Jet A
     target_fuel_item = None
     for item in valid_fuel_items:
         s_name = str(item.get("serviceName", "")).lower()
@@ -224,7 +222,6 @@ def extract_signature_pricing(data):
             target_fuel_item = item
             break
     
-    # Fallback to the first valid fuel item if plain Jet A isn't specifically matched
     if not target_fuel_item and valid_fuel_items:
         target_fuel_item = valid_fuel_items[0]
 
@@ -367,7 +364,6 @@ def fetch_live_signature_pricing(stations_list, aircraft_list, date_val):
 
             parsed = extract_signature_pricing(response_json)
 
-            # Format Hangar Value: Display "Call FBO" if N/A or 0.00
             hangar_val = parsed["hangar"]
             if hangar_val == "N/A" or hangar_val == "0.00" or not hangar_val:
                 formatted_hangar = "Call FBO"
@@ -375,7 +371,6 @@ def fetch_live_signature_pricing(stations_list, aircraft_list, date_val):
                 formatted_hangar = hangar_val
 
             records.append({
-                "ICAO": clean_icao,
                 "Aircraft Reg": clean_reg,
                 "Date": formatted_date,
                 "Service Code": parsed["service_code"],
