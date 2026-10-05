@@ -14,7 +14,7 @@ st.set_page_config(
 st.title("✈️ Signature Aviation — Fuel Pricing Array Inspector")
 st.markdown("Extracts and displays live `fuelPricing` and volume tiers directly from Signature's API schema payloads.")
 
-# Default Options & Mapping Constants (Corrected BUF baseId to B70)
+# Default Options & Mapping Constants
 ALL_STATIONS = {
     "BUF": {"baseId": "B70", "baseCode": "BUF"},
     "FSM": {"baseId": "B80", "baseCode": "FSM"}
@@ -64,10 +64,24 @@ def generate_mock_signature_payload(icao, reg, date_str):
     is_fsm = (icao == "FSM")
     is_heavy = reg in ["N265K", "N316K"]
     
-    retail_jet = 8.55 if is_fsm else 9.17  # BUF Retail Jet A set to 9.17 per screenshot
-    t1_price = 7.69 if is_fsm else 8.61  # Customer discounted tier 1 price
-    t1_disc = 0.86 if is_fsm else 0.56
+    retail_jet = 8.55 if is_fsm else 9.17  # BUF Base Retail Jet A set to 9.17
     
+    if is_fsm:
+        t1_price = 7.69
+        t1_disc = 0.86
+        t2_price = 7.41
+        t2_disc = 1.14
+        t3_price = 7.14
+        t3_disc = 1.41
+    else:
+        # BUF Tiers matched precisely to screenshot data: $8.61, $8.30, $8.04[cite: 2]
+        t1_price = 8.61
+        t1_disc = 0.56
+        t2_price = 8.30
+        t2_disc = 0.87
+        t3_price = 8.04
+        t3_disc = 1.13
+
     additive_retail = 8.55 if is_fsm else 8.71
     additive_price = 7.69 if is_fsm else 8.71
 
@@ -96,25 +110,25 @@ def generate_mock_signature_payload(icao, reg, date_str):
             "customerPrice": t1_price,
             "priceTiers": [
                 {
-                    "tierName": "0.00 - 300.00 GLL",
+                    "tierName": "0.00 - 500.00 GLL" if not is_fsm else "0.00 - 300.00 GLL",
                     "minQuantity": 0.0,
-                    "maxQuantity": 300.0,
+                    "maxQuantity": 500.0 if not is_fsm else 300.0,
                     "price": t1_price,
                     "discountAmount": t1_disc
                 },
                 {
-                    "tierName": "301.00 - 1,200.00 GLL",
-                    "minQuantity": 301.0,
+                    "tierName": "501.00 - 1,200.00 GLL" if not is_fsm else "301.00 - 1,200.00 GLL",
+                    "minQuantity": 501.0 if not is_fsm else 301.0,
                     "maxQuantity": 1200.0,
-                    "price": round(t1_price - 0.28, 2),
-                    "discountAmount": round(t1_disc + 0.28, 2)
+                    "price": t2_price,
+                    "discountAmount": t2_disc
                 },
                 {
                     "tierName": "1,201.00 - 99,999.00 GLL",
                     "minQuantity": 1201.0,
                     "maxQuantity": 99999.0,
-                    "price": round(t1_price - 0.55, 2),
-                    "discountAmount": round(t1_disc + 0.55, 2)
+                    "price": t3_price,
+                    "discountAmount": t3_disc
                 }
             ]
         },
@@ -127,9 +141,9 @@ def generate_mock_signature_payload(icao, reg, date_str):
             "customerPrice": additive_price,
             "priceTiers": [
                 {
-                    "tierName": "0.00 - 300.00 GLL",
+                    "tierName": "0.00 - 500.00 GLL" if not is_fsm else "0.00 - 300.00 GLL",
                     "minQuantity": 0.0,
-                    "maxQuantity": 300.0,
+                    "maxQuantity": 500.0 if not is_fsm else 300.0,
                     "price": additive_price,
                     "discountAmount": 0.0
                 }
@@ -236,7 +250,6 @@ def extract_signature_pricing(data):
             target_fuel_item = item
             break
     
-    # Fallback to any available fuel item if pure Jet A wasn't found
     if not target_fuel_item and valid_fuel_items:
         target_fuel_item = valid_fuel_items[0]
 
@@ -389,8 +402,8 @@ def fetch_live_signature_pricing(stations_list, aircraft_list, date_val):
                 "Service Code": parsed["service_code"],
                 "Service Name": parsed["service_name"],
                 "Retail Price": parsed["retail_price"],
-                "Jet A 0-300 GLL": parsed["jet_a_tier1"],
-                "Jet A 301-1200 GLL": parsed["jet_a_tier2"],
+                "Jet A 0-500 GLL": parsed["jet_a_tier1"],
+                "Jet A 501-1200 GLL": parsed["jet_a_tier2"],
                 "Jet A 1201+ GLL": parsed["jet_a_tier3"],
                 "Handling Fee": parsed["handling"],
                 "Waiver Min Gallons": parsed["waiver_min_gallons"],
