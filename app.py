@@ -371,6 +371,7 @@ def fetch_live_signature_pricing(stations_list, aircraft_list, date_val):
                 formatted_hangar = hangar_val
 
             records.append({
+                "ICAO": clean_icao,
                 "Aircraft Reg": clean_reg,
                 "Date": formatted_date,
                 "Service Code": parsed["service_code"],
