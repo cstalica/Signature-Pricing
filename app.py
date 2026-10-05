@@ -1,37 +1,32 @@
-import os
-import subprocess
 import streamlit as st
+import requests
 import pandas as pd
 from datetime import datetime
 
-# Ensure Playwright browser binaries are installed on Streamlit Community Cloud
-try:
-    subprocess.run(["playwright", "install", "chromium"], check=True)
-except Exception as e:
-    print(f"Playwright installation check: {e}")
-
-from playwright.sync_api import sync_playwright
-
 # Page Configuration
 st.set_page_config(
-    page_title="Signature Aviation Live API Inspector",
+    page_title="Signature Aviation Direct API Inspector",
     page_icon="✈",
     layout="wide"
 )
 
-st.title("✈️ Signature Aviation — Live API & FBO Inspector")
-st.markdown("Queries live Signature FBO rate schedules via Playwright network request interception.")
+st.title("✈️ Signature Aviation — Direct REST API Pricing Inspector")
+st.markdown("Queries Signature Aviation's live pricing REST endpoint directly for aircraft fleets across stations.")
 
-# Station Mappings
+# Station Mapping & Account Details
 ALL_STATIONS = {
-    "MIA": {"baseId": "L23", "baseCode": "MIA", "fboUrl": "https://www.signatureaviation.com/locations/MIA?fboDetailId=L23"},
-    "OPF": {"baseId": "L26", "baseCode": "OPF", "fboUrl": "https://www.signatureaviation.com/locations/OPF?fboDetailId=L26"},
-    "TMB": {"baseId": "L24", "baseCode": "TMB", "fboUrl": "https://www.signatureaviation.com/locations/TMB?fboDetailId=L24"},
-    "BUF": {"baseId": "B70", "baseCode": "BUF", "fboUrl": "https://www.signatureaviation.com/locations/BUF?fboDetailId=B70"},
-    "FSM": {"baseId": "B80", "baseCode": "FSM", "fboUrl": "https://www.signatureaviation.com/locations/FSM?fboDetailId=B80"}
+    "MIA": {"baseId": "L23", "baseCode": "MIA"},
+    "OPF": {"baseId": "L26", "baseCode": "OPF"},
+    "TMB": {"baseId": "L24", "baseCode": "TMB"},
+    "BUF": {"baseId": "B70", "baseCode": "BUF"},
+    "FSM": {"baseId": "B80", "baseCode": "FSM"}
 }
 
 DEFAULT_FLEET = ["N730K", "N265K", "N316K", "N681K"]
+
+ACCOUNT_NUMBER = "3951"
+ACCOUNT_ID = "1cdf46c1-ee12-df11-b019-005056a16799"
+MODEL_NUMBER = "0"
 
 # Sidebar Controls
 st.sidebar.header("Parameters & Configuration")
@@ -39,7 +34,7 @@ st.sidebar.header("Parameters & Configuration")
 selected_station_icao = st.sidebar.selectbox(
     "Select Airport ICAO", 
     list(ALL_STATIONS.keys()), 
-    index=1
+    index=2
 )
 
 aircraft_mode = st.sidebar.radio("Aircraft Selection Mode", ["All Aircraft (Fleet)", "Single Aircraft"])
@@ -52,23 +47,26 @@ else:
 selected_date = st.sidebar.date_input("Arrival Date", value=datetime.today())
 
 
-def parse_api_json_payload(json_data):
-    """Parses raw Signature REST API JSON payload safely, handling dicts and lists."""
+def extract_signature_pricing(data):
+    """Parses raw Signature REST API JSON payload into structured fuel and fee records."""
     extracted = {
-        "Retail Jet A": "N/A",
-        "Contract Jet A": "N/A",
-        "Handling Fee": "N/A",
-        "Waiver Min Fuel": "N/A",
-        "Infrastructure Fee": "N/A",
-        "GPU": "N/A",
-        "Lav Service": "N/A"
+        "retail_price": "N/A",
+        "jet_a_tier1": "N/A",
+        "jet_a_tier2": "N/A",
+        "jet_a_tier3": "N/A",
+        "handling": "N/A",
+        "waiver_min_gallons": "N/A",
+        "infra": "N/A",
+        "gpu": "N/A",
+        "hangar": "N/A",
+        "lav": "N/A"
     }
 
-    if not json_data:
+    if not data or not isinstance(data, (dict, list)):
         return extracted
 
-    # Unpack top-level wrappers if present
-    payload = json_data
+    # Unpack nested structures if present
+    payload = data
     if isinstance(payload, dict):
         if "data" in payload and isinstance(payload["data"], (dict, list)):
             payload = payload["data"]
@@ -76,7 +74,6 @@ def parse_api_json_payload(json_data):
         if "result" in payload and isinstance(payload["result"], (dict, list)):
             payload = payload["result"]
 
-    # Extract items depending on whether payload is a dict or a list
     fuel_items = []
     service_items = []
 
@@ -87,42 +84,68 @@ def parse_api_json_payload(json_data):
         fuel_items = payload
         service_items = payload
 
-    if not isinstance(fuel_items, list):
-        fuel_items = []
-    if not isinstance(service_items, list):
-        service_items = []
+    if not isinstance(fuel_items, list): fuel_items = []
+    if not isinstance(service_items, list): service_items = []
 
-    # Process Fuel Pricing
+    # Parse Jet A Pricing & Tiers
+    target_fuel = None
     for item in fuel_items:
         if not isinstance(item, dict):
             continue
         code = str(item.get("serviceCode", item.get("code", ""))).upper()
         name = str(item.get("serviceName", item.get("name", ""))).upper()
-        
-        if ("JET A" in name or "JET" in code) and "ADDITIVE" not in name and "100LL" not in name:
-            retail = item.get("retailPrice", item.get("retail"))
-            cust = item.get("customerPrice", item.get("price"))
-            if retail is not None:
-                extracted["Retail Jet A"] = f"${float(retail):.2f}"
-            if cust is not None:
-                extracted["Contract Jet A"] = f"${float(cust):.2f}"
-            
-            tiers = item.get("priceTiers", item.get("tiers", []))
-            if isinstance(tiers, list) and len(tiers) > 0:
-                first_tier = tiers[0]
-                if isinstance(first_tier, dict):
-                    p0 = first_tier.get("price", first_tier.get("customerPrice"))
-                    if p0 is not None:
-                        extracted["Contract Jet A"] = f"${float(p0):.2f}"
+        if ("JET A" in name or "JET" in code) and "ADDITIVE" not in name and "100LL" not in name and "SAF" not in name:
+            target_fuel = item
             break
 
-    # Process Service Fees
-    for s in service_items:
-        if not isinstance(s, dict):
+    if not target_fuel and fuel_items:
+        for item in fuel_items:
+            if isinstance(item, dict):
+                target_fuel = item
+                break
+
+    if target_fuel:
+        retail = target_fuel.get("retailPrice", target_fuel.get("retail"))
+        if retail is not None:
+            try:
+                extracted["retail_price"] = f"${float(retail):.2f}"
+            except (ValueError, TypeError):
+                extracted["retail_price"] = str(retail)
+
+        cust_p = target_fuel.get("customerPrice", target_fuel.get("price"))
+        if cust_p is not None:
+            try:
+                extracted["jet_a_tier1"] = f"${float(cust_p):.2f}"
+            except (ValueError, TypeError):
+                extracted["jet_a_tier1"] = str(cust_p)
+
+        tiers = target_fuel.get("priceTiers", target_fuel.get("tiers", []))
+        if isinstance(tiers, list) and len(tiers) > 0:
+            sorted_tiers = sorted(
+                [t for t in tiers if isinstance(t, dict)],
+                key=lambda x: float(x.get("minQuantity", x.get("minQty", 0)))
+            )
+            for idx, tier in enumerate(sorted_tiers):
+                p = tier.get("price", tier.get("customerPrice"))
+                if p is not None:
+                    try:
+                        val = f"${float(p):.2f}"
+                    except (ValueError, TypeError):
+                        val = str(p)
+                    if idx == 0:
+                        extracted["jet_a_tier1"] = val
+                    elif idx == 1:
+                        extracted["jet_a_tier2"] = val
+                    elif idx == 2:
+                        extracted["jet_a_tier3"] = val
+
+    # Parse Service Fees
+    for s_item in service_items:
+        if not isinstance(s_item, dict):
             continue
-        code = str(s.get("serviceCode", s.get("code", ""))).upper()
-        name = str(s.get("serviceName", s.get("name", ""))).upper()
-        price = s.get("customerPrice", s.get("price", s.get("amount")))
+        code = str(s_item.get("serviceCode", s_item.get("code", ""))).upper()
+        name = str(s_item.get("serviceName", s_item.get("name", ""))).upper()
+        price = s_item.get("customerPrice", s_item.get("price", s_item.get("amount")))
 
         if price is not None:
             try:
@@ -131,36 +154,95 @@ def parse_api_json_payload(json_data):
                 val_str = str(price)
 
             if "HANDLING" in code or "HANDLING" in name or "RAMP" in name:
-                extracted["Handling Fee"] = val_str
-                waiver = s.get("waiverMinGallons", s.get("waiverGallons"))
-                if waiver:
-                    extracted["Waiver Min Fuel"] = f"{waiver} gal"
+                extracted["handling"] = val_str
+                waiver_gal = s_item.get("waiverMinGallons", s_item.get("waiverGallons"))
+                if waiver_gal:
+                    extracted["waiver_min_gallons"] = f"{waiver_gal} gal"
             elif "INFRASTRUCTURE" in code or "INFRASTRUCTURE" in name:
-                extracted["Infrastructure Fee"] = val_str
+                extracted["infra"] = val_str
             elif "GPU" in code or "GROUND POWER" in name:
-                extracted["GPU"] = val_str
+                extracted["gpu"] = val_str
+            elif "HANGAR" in code or "HANGAR" in name:
+                extracted["hangar"] = val_str
             elif "LAV" in code or "LAVATORY" in name:
-                extracted["Lav Service"] = val_str
+                extracted["lav"] = val_str
 
     return extracted
 
 
-def scrape_signature_data(icao, aircraft_list, target_date):
-    """Launches Playwright Chromium with Stealth flags and intercepts raw API JSON payloads."""
-    station_info = ALL_STATIONS.get(icao, ALL_STATIONS["OPF"])
-    formatted_date = target_date.strftime("%m/%d/%Y")
+def fetch_signature_pricing_api(icao, aircraft_list, date_val):
+    """Executes direct REST API request to Signature Aviation's discount pricing endpoint."""
+    formatted_date = date_val.strftime("%m/%d/%Y")
+    encoded_date = formatted_date.replace("/", "%2F")
     records = []
+    
+    station_info = ALL_STATIONS.get(icao, ALL_STATIONS["TMB"])
+    
+    session = requests.Session()
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+        "Accept": "application/json, text/plain, */*",
+        "Accept-Language": "en-US,en;q=0.9",
+        "Referer": "https://www.signatureaviation.com/",
+        "Origin": "https://www.signatureaviation.com"
+    }
 
-    with sync_playwright() as p:
-        browser = p.chromium.launch(
-            headless=True,
-            args=[
-                "--disable-blink-features=AutomationControlled",
-                "--no-sandbox",
-                "--disable-setuid-sandbox"
-            ]
+    for reg in aircraft_list:
+        clean_reg = reg.strip().upper()
+        
+        api_url = (
+            f"https://new-prod-api.signatureaviation.com/api/rest/pricing/services/discount?"
+            f"baseId={station_info['baseId']}&baseCode={station_info['baseCode']}&pricingDate={encoded_date}&"
+            f"modelNumber={MODEL_NUMBER}&tailNumber={clean_reg}&"
+            f"accountNumber={ACCOUNT_NUMBER}&accountId={ACCOUNT_ID}"
         )
-        context = browser.new_context(
-            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
-            viewport={"width": 1366, "height": 768}
-        )
+        
+        response_json = {}
+        try:
+            res = session.get(api_url, headers=headers, timeout=8)
+            if res.status_code == 200:
+                response_json = res.json()
+            else:
+                st.warning(f"HTTP {res.status_code} returned for {clean_reg} at {icao}")
+        except Exception as e:
+            st.error(f"Connection error for {clean_reg}: {e}")
+
+        parsed = extract_signature_pricing(response_json)
+        
+        records.append({
+            "ICAO": icao,
+            "Aircraft Reg": clean_reg,
+            "Date": formatted_date,
+            "Retail Jet A": parsed["retail_price"],
+            "Jet A Tier 1 (0-500 gal)": parsed["jet_a_tier1"],
+            "Jet A Tier 2 (501-1200 gal)": parsed["jet_a_tier2"],
+            "Jet A Tier 3 (1201+ gal)": parsed["jet_a_tier3"],
+            "Handling Fee": parsed["handling"],
+            "Waiver Min Fuel": parsed["waiver_min_gallons"],
+            "Infrastructure Fee": parsed["infra"],
+            "GPU Fee": parsed["gpu"],
+            "Hangar Fee": parsed["hangar"],
+            "Lav Service": parsed["lav"]
+        })
+        
+    return records
+
+
+# Render App Data
+with st.spinner(f"Fetching direct REST API data for {selected_station_icao}..."):
+    records = fetch_signature_pricing_api(selected_station_icao, aircraft_to_query, selected_date)
+
+st.subheader(f"📊 Live API Data — {selected_station_icao}")
+df_results = pd.DataFrame(records)
+
+# Render Data Table
+st.dataframe(df_results, use_container_width=True, hide_index=True)
+
+# CSV Export
+csv_data = df_results.to_csv(index=False).encode('utf-8')
+st.download_button(
+    label=f"📥 Download {selected_station_icao} Pricing CSV",
+    data=csv_data,
+    file_name=f"signature_{selected_station_icao}_{selected_date.strftime('%Y%m%d')}.csv",
+    mime="text/csv"
+)
