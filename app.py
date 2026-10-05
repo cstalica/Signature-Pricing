@@ -48,7 +48,7 @@ selected_date = st.sidebar.date_input("Arrival Date", value=datetime.today())
 st.sidebar.markdown("---")
 enable_debug = st.sidebar.checkbox("Enable Live API Debug Inspector", value=True)
 
-# Accurate Mock Payload Generator with Correct TMB Pricing
+# Payload Generator Matched to Live Signature TMB Schema
 def generate_mock_signature_payload(icao, reg, date_str):
     is_fsm = (icao == "FSM")
     is_tmb = (icao == "TMB")
@@ -56,9 +56,9 @@ def generate_mock_signature_payload(icao, reg, date_str):
     
     if is_tmb:
         retail_jet = 8.39
-        t1_price, t1_disc = 8.39, 0.00
-        t2_price, t2_disc = 7.95, 0.44
-        t3_price, t3_disc = 7.60, 0.79
+        t1_price, t1_disc = 6.99, 1.40
+        t2_price, t2_disc = 6.69, 1.70
+        t3_price, t3_disc = 6.39, 2.00
     elif is_fsm:
         retail_jet = 8.55
         t1_price, t1_disc = 7.69, 0.86
@@ -178,19 +178,34 @@ def extract_signature_pricing(data):
     }
 
     fuel_items = data.get("fuelPricing", []) if isinstance(data, dict) else []
-    target_fuel_item = fuel_items[0] if fuel_items else None
+    target_fuel_item = None
+    
+    for item in fuel_items:
+        code = str(item.get("serviceCode", "")).upper()
+        name = str(item.get("serviceName", "")).lower()
+        if "additive" not in name and "ADDITIVE" not in code and "100LL" not in code:
+            target_fuel_item = item
+            break
+            
+    if not target_fuel_item and fuel_items:
+        target_fuel_item = fuel_items[0]
 
     if target_fuel_item:
         if target_fuel_item.get("retailPrice"):
             extracted["retail_price"] = f"{float(target_fuel_item.get('retailPrice')):.2f}"
+        
         tiers = target_fuel_item.get("priceTiers", [])
-        if isinstance(tiers, list):
+        if isinstance(tiers, list) and len(tiers) > 0:
             for idx, tier in enumerate(sorted(tiers, key=lambda x: x.get("minQuantity", 0))):
                 p = tier.get("price")
                 if p is not None:
                     if idx == 0: extracted["jet_a_tier1"] = f"{float(p):.2f}"
                     elif idx == 1: extracted["jet_a_tier2"] = f"{float(p):.2f}"
                     elif idx == 2: extracted["jet_a_tier3"] = f"{float(p):.2f}"
+        else:
+            cust_p = target_fuel_item.get("customerPrice")
+            if cust_p is not None:
+                extracted["jet_a_tier1"] = f"{float(cust_p):.2f}"
 
     for s_item in data.get("serviceFees", []) if isinstance(data, dict) else []:
         code = str(s_item.get("serviceCode", "")).upper()
@@ -268,7 +283,7 @@ records = fetch_live_signature_pricing(stations_to_query, aircraft_to_query, sel
 st.subheader("📊 Full Processed Pricing Table")
 df_results = pd.DataFrame(records)
 
-# Display the dataframe
+# Display table
 st.dataframe(df_results, use_container_width=True, hide_index=True)
 
 # CSV Download Button
