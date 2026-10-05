@@ -13,10 +13,11 @@ st.set_page_config(
 st.title("✈️ Signature Aviation — Live FBO Service Fees Inspector")
 st.markdown("Extracts and displays live handling, infrastructure, and auxiliary service fees directly from Signature's API production endpoints.")
 
-# Default Options & Mapping Constants (Including BZN)
+# Default Options & Mapping Constants 
+# Note: Ensure baseId matches Signature's internal database code for each location
 ALL_STATIONS = {
     "BUF": {"baseId": "B70", "baseCode": "BUF"},
-    "BZN": {"baseId": "BZN", "baseCode": "BZN"},
+    "BZN": {"baseId": "BZN", "baseCode": "BZN"}, # If BZN returns empty, verify Signature's internal baseId for Yellowstone Jetcenter
     "FSM": {"baseId": "B80", "baseCode": "FSM"},
     "TMB": {"baseId": "L24", "baseCode": "TMB"},
     "MIA": {"baseId": "L23", "baseCode": "MIA"}
@@ -50,13 +51,22 @@ selected_date = st.sidebar.date_input("Arrival Date", value=datetime.today())
 st.sidebar.markdown("---")
 enable_debug = st.sidebar.checkbox("Enable Live API Debug Inspector", value=True)
 
-def extract_signature_fees(data):
+def extract_signature_fees(api_response):
     extracted = {
         "handling": "N/A", "waiver_min_gallons": "N/A", "infra": "N/A",
         "gpu": "N/A", "hangar": "N/A", "lav": "N/A"
     }
 
-    for s_item in data.get("serviceFees", []) if isinstance(data, dict) else []:
+    # Signature API returns a wrapper with a "data" array
+    data_list = api_response.get("data", []) if isinstance(api_response, dict) else []
+    
+    if not data_list:
+        return extracted
+
+    # Extract from the first record in the data array
+    station_record = data_list[0] if isinstance(data_list, list) and len(data_list) > 0 else {}
+
+    for s_item in station_record.get("serviceFees", []):
         code = str(s_item.get("serviceCode", "")).upper()
         price = s_item.get("customerPrice")
         if price is not None:
