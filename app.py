@@ -13,14 +13,71 @@ st.set_page_config(
 st.title("✈️ Signature Aviation — Live FBO Service Fees Inspector")
 st.markdown("Extracts and displays live handling, infrastructure, and auxiliary service fees using verified station base IDs.")
 
-# Stations with explicit internal baseIds
+# Stations with explicit internal baseIds and baseCode as the last 3 letters
 ALL_STATIONS = {
-    "BUF": {"baseId": "B70", "baseCode": "BUF"},
-    "BZN": {"baseId": "P55", "baseCode": "BZN"},
-    "FSM": {"baseId": "B80", "baseCode": "FSM"},
-    "TMB": {"baseId": "L24", "baseCode": "TMB"},
-    "MIA": {"baseId": "L23", "baseCode": "MIA"}
+    "LGZA": {"baseId": "ZTH", "baseCode": "GZA"},
+    "CYYZ": {"baseId": "YYZ", "baseCode": "YYZ"},
+    "CYYC": {"baseId": "YYC", "baseCode": "YYC"},
+    "CYVR": {"baseId": "YVR", "baseCode": "YVR"},
+    "CYUL": {"baseId": "YUL", "baseCode": "YUL"},
+    "MPTO": {"baseId": "Y47", "baseCode": "PTO"},
+    "KVNY": {"baseId": "VNE", "baseCode": "VNY"},
+    "SBVT": {"baseId": "VIX", "baseCode": "BVT"},
+    "SBKP": {"baseId": "VCP", "baseCode": "BKP"},
+    "KBNA": {"baseId": "V52", "baseCode": "BNA"},
+    "KMSP": {"baseId": "V51", "baseCode": "MSP"},
+    "KMKE": {"baseId": "V50", "baseCode": "MKE"},
+    "KDSM": {"baseId": "V47", "baseCode": "DSM"},
+    "KBOS": {"baseId": "V42", "baseCode": "BOS"},
+    "PANC": {"baseId": "V40", "baseCode": "ANC"},
+    "SBSV": {"baseId": "SSA", "baseCode": "BSV"},
+    "EGHI": {"baseId": "SOU", "baseCode": "GHI"},
+    "EINN": {"baseId": "SNN", "baseCode": "INN"},
+    "LGSM": {"baseId": "SMI", "baseCode": "GSM"},
+    "LGTS": {"baseId": "SKG", "baseCode": "GTS"},
+    "LSGS": {"baseId": "SIR", "baseCode": "SGS"},
+    "SBRJ": {"baseId": "SDU", "baseCode": "BRJ"},
+    "LGRP": {"baseId": "RHO", "baseCode": "GRP"},
+    "SBRF": {"baseId": "REC", "baseCode": "BRF"},
+    "SBPA": {"baseId": "POA", "baseCode": "BPA"},
+    "SBBH": {"baseId": "PLU", "baseCode": "BBH"},
+    "LGPA": {"baseId": "PAS", "baseCode": "GPA"},
+    "KEGE": {"baseId": "P93", "baseCode": "EGE"},
+    "KSFO": {"baseId": "P88", "baseCode": "SFO"},
+    "KPSP": {"baseId": "P87", "baseCode": "PSP"},
+    "KMEM": {"baseId": "P86", "baseCode": "MEM"},
+    "KIND": {"baseId": "P85", "baseCode": "IND"},
+    "KFLL": {"baseId": "P84", "baseCode": "FLL"},
+    "KDEN": {"baseId": "P83", "baseCode": "DEN"},
+    "KDAL": {"baseId": "P82", "baseCode": "DAL"},
+    "KDAL (P63)": {"baseId": "P63", "baseCode": "DAL"},
+    "KBED": {"baseId": "P74", "baseCode": "BED"},
+    "KJAX": {"baseId": "P73", "baseCode": "JAX"},
+    "KSBA": {"baseId": "P71", "baseCode": "SBA"},
+    "KPWK": {"baseId": "P69", "baseCode": "PWK"},
+    "KMMU": {"baseId": "P67", "baseCode": "MMU"},
+    "KAPA": {"baseId": "P66", "baseCode": "APA"},
+    "KPDK": {"baseId": "P65", "baseCode": "PDK"},
+    "KTEB": {"baseId": "P62", "baseCode": "TEB"},
+    "KDJT": {"baseId": "P61", "baseCode": "DJT"},
+    "KHPN": {"baseId": "P60", "baseCode": "HPN"},
+    "KHPN (P57)": {"baseId": "P57", "baseCode": "HPN"},
+    "KSDL": {"baseId": "P58", "baseCode": "SDL"},
+    "KMHT": {"baseId": "P56", "baseCode": "MHT"},
+    "KBZN": {"baseId": "P55", "baseCode": "BZN"},
+    "KBCT": {"baseId": "P54", "baseCode": "BCT"},
+    "KBDL": {"baseId": "P53", "baseCode": "BDL"},
+    "KOMA": {"baseId": "P44", "baseCode": "OMA"},
+    "KRST": {"baseId": "P39", "baseCode": "RST"},
+    "KSTP": {"baseId": "P38", "baseCode": "STP"},
+    "KHXD": {"baseId": "P37", "baseCode": "HXD"},
+    "KMSY": {"baseId": "P36", "baseCode": "MSY"},
+    "KFAT": {"baseId": "P35", "baseCode": "FAT"},
+    "KLGB": {"baseId": "P31", "baseCode": "LGB"},
+    "KSWF": {"baseId": "P28", "baseCode": "SWF"},
+    "KBFM": {"baseId": "P27", "baseCode": "BFM"}
 }
+
 DEFAULT_FLEET = ["N730K", "N265K", "N316K", "N681K"]
 
 # Fixed Account Credentials
@@ -88,7 +145,7 @@ def fetch_live_signature_fees(stations_list, aircraft_list, date_val, debug_mode
 
     for icao in stations_list:
         clean_icao = icao.strip().upper()
-        station_info = ALL_STATIONS.get(clean_icao, {"baseId": clean_icao, "baseCode": clean_icao})
+        station_info = ALL_STATIONS.get(clean_icao, {"baseId": clean_icao, "baseCode": clean_icao[-3:]})
         
         for reg in aircraft_list:
             clean_reg = reg.strip().upper()
