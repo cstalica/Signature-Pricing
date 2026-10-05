@@ -103,11 +103,14 @@ def extract_signature_pricing(data):
 
     return extracted
 
-def fetch_live_signature_pricing(stations_list, aircraft_list, date_val):
+def fetch_live_signature_pricing(stations_list, aircraft_list, date_val, debug_mode):
     formatted_date = date_val.strftime("%m/%d/%Y")
     encoded_date = formatted_date.replace("/", "%2F")
     records = []
     
+    if debug_mode:
+        st.subheader("🔍 Live API Debug Inspector")
+
     for icao in stations_list:
         clean_icao = icao.strip().upper()
         station_info = ALL_STATIONS.get(clean_icao, {"baseId": "L23", "baseCode": clean_icao})
@@ -130,11 +133,23 @@ def fetch_live_signature_pricing(stations_list, aircraft_list, date_val):
             
             response_json = {}
             try:
-                res = requests.get(full_url, headers=headers, timeout=3)
+                res = requests.get(full_url, headers=headers, timeout=5)
+                
+                if debug_mode:
+                    with st.expander(f"API Request: {clean_icao} / {clean_reg} (Status: {res.status_code})"):
+                        st.text(f"URL: {full_url}")
+                        if res.status_code == 200:
+                            st.success("Request Successful (200 OK)")
+                            st.json(res.json())
+                        else:
+                            st.error(f"Request Failed with Status {res.status_code}")
+                            st.code(res.text[:1000]) # Display response snippet
+                
                 if res.status_code == 200:
                     response_json = res.json()
-            except Exception:
-                pass
+            except Exception as e:
+                if debug_mode:
+                    st.error(f"Exception encountered for {clean_icao} / {clean_reg}: {e}")
 
             parsed = extract_signature_pricing(response_json)
             records.append({
@@ -155,7 +170,7 @@ def fetch_live_signature_pricing(stations_list, aircraft_list, date_val):
     return records
 
 # Fetch and display current records
-records = fetch_live_signature_pricing(stations_to_query, aircraft_to_query, selected_date)
+records = fetch_live_signature_pricing(stations_to_query, aircraft_to_query, selected_date, enable_debug)
 
 st.subheader("📊 Full Processed Pricing Table")
 df_results = pd.DataFrame(records)
