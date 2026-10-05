@@ -233,54 +233,76 @@ def fetch_live_signature_fees(stations_list, aircraft_list, date_val):
     encoded_date = formatted_date.replace("/", "%2F")
     records = []
 
-    for icao in stations_list:
-        clean_icao = icao.strip().upper()
-        
-        # Look up station in ALL_STATIONS if present; otherwise default to clean_icao & baseCode from ICAO
-        if clean_icao in ALL_STATIONS:
-            station_info = ALL_STATIONS[clean_icao]
-        else:
-            # Fallback for manually typed ICAOs not in preset dictionary
-            base_code = clean_icao[-3:] if len(clean_icao) >= 3 else clean_icao
-            station_info = {"baseId": clean_icao, "baseCode": base_code}
-        
-        for reg in aircraft_list:
-            clean_reg = reg.strip().upper()
-            if not clean_reg: continue
-                
-            full_url = (
-                f"https://new-prod-api.signatureaviation.com/api/rest/pricing/services/discount?"
-                f"baseId={station_info['baseId']}&baseCode={station_info['baseCode']}&pricingDate={encoded_date}&"
-                f"modelNumber={MODEL_NUMBER}&tailNumber={clean_reg}&"
-                f"accountNumber={ACCOUNT_NUMBER}&accountId={ACCOUNT_ID}"
-            )
-            
-            headers = {
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-                "X-Requested-With": "XMLHttpRequest",
-                "Accept": "application/json, text/plain, */*"
-            }
-            
-            response_json = {}
-            try:
-                res = requests.get(full_url, headers=headers, timeout=5)
-                if res.status_code == 200:
-                    response_json = res.json()
-            except Exception:
-                pass
+    total_requests = len(stations_list) * len(aircraft_list)
+    completed = 0
 
-            parsed = extract_signature_fees(response_json)
-            records.append({
-                "ICAO": clean_icao,
-                "Aircraft Reg": clean_reg,
-                "Date": formatted_date,
-                "Handling Fee": parsed["handling"],
-                "Waiver Min GLL": parsed["waiver_min_gallons"],
-                "Infrastructure Fee": parsed["infra"],
-                "GPU": parsed["gpu"],
-                "Hangar": parsed["hangar"] if parsed["hangar"] != "0.00" else "Call FBO",
-                "Lav Service": parsed["lav"]
-            })
+    # UI Feedback Containers
+    progress_bar = st.progress(0)
+    status_box = st.status("🚀 **Initializing API Data Fetch...**", expanded=True)
+    
+    with status_box:
+        log_placeholder = st.empty()
+
+        for icao in stations_list:
+            clean_icao = icao.strip().upper()
+            
+            if clean_icao in ALL_STATIONS:
+                station_info = ALL_STATIONS[clean_icao]
+            else:
+                base_code = clean_icao[-3:] if len(clean_icao) >= 3 else clean_icao
+                station_info = {"baseId": clean_icao, "baseCode": base_code}
+            
+            for reg in aircraft_list:
+                clean_reg = reg.strip().upper()
+                if not clean_reg:
+                    continue
+                
+                completed += 1
+                progress_pct = completed / total_requests
+                progress_bar.progress(progress_pct)
+                
+                # Update status message with current ICAO & Registration
+                log_placeholder.markdown(
+                    f"Fetching **{completed}/{total_requests}**: Station **`{clean_icao}`** | Aircraft **`{clean_reg}`**..."
+                )
+                
+                full_url = (
+                    f"https://new-prod-api.signatureaviation.com/api/rest/pricing/services/discount?"
+                    f"baseId={station_info['baseId']}&baseCode={station_info['baseCode']}&pricingDate={encoded_date}&"
+                    f"modelNumber={MODEL_NUMBER}&tailNumber={clean_reg}&"
+                    f"accountNumber={ACCOUNT_NUMBER}&accountId={ACCOUNT_ID}"
+                )
+                
+                headers = {
+                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+                    "X-Requested-With": "XMLHttpRequest",
+                    "Accept": "application/json, text/plain, */*"
+                }
+                
+                response_json = {}
+                try:
+                    res = requests.get(full_url, headers=headers, timeout=5)
+                    if res.status_code == 200:
+                        response_json = res.json()
+                except Exception:
+                    pass
+
+                parsed = extract_signature_fees(response_json)
+                records.append({
+                    "ICAO": clean_icao,
+                    "Aircraft Reg": clean_reg,
+                    "Date": formatted_date,
+                    "Handling Fee": parsed["handling"],
+                    "Waiver Min GLL": parsed["waiver_min_gallons"],
+                    "Infrastructure Fee": parsed["infra"],
+                    "GPU": parsed["gpu"],
+                    "Hangar": parsed["hangar"] if parsed["hangar"] != "0.00" else "Call FBO",
+                    "Lav Service": parsed["lav"]
+                })
+
+        # Update status box to completed state
+        status_box.update(label=f"✅ **Data Fetch Completed! ({total_requests}/{total_requests} requests processed)**", state="complete", expanded=False)
+
     return records
 
 # Handle data fetching on button click and persist results across rerun
@@ -288,10 +310,9 @@ if fetch_button:
     if not stations_to_query:
         st.error("Please enter or select a valid airport ICAO code first.")
     else:
-        with st.spinner("Fetching live API fee data..."):
-            st.session_state["fbo_records"] = fetch_live_signature_fees(
-                stations_to_query, aircraft_to_query, selected_date
-            )
+        st.session_state["fbo_records"] = fetch_live_signature_fees(
+            stations_to_query, aircraft_to_query, selected_date
+        )
 
 # Display Results
 if "fbo_records" in st.session_state and st.session_state["fbo_records"]:
