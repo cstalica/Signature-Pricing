@@ -376,18 +376,18 @@ def fetch_live_signature_pricing(stations_list, aircraft_list, date_val):
                 "Date": formatted_date,
                 "Service Code": parsed["service_code"],
                 "Service Name": parsed["service_name"],
-                "Retail Price ($)": parsed["retail_price"],
-                "Jet A 0-300 GLL ($)": parsed["jet_a_tier1"],
-                "Jet A 301-1200 GLL ($)": parsed["jet_a_tier2"],
-                "Jet A 1201+ GLL ($)": parsed["jet_a_tier3"],
-                "Handling Fee ($)": parsed["handling"],
+                "Retail Price": parsed["retail_price"],
+                "Jet A 0-300 GLL": parsed["jet_a_tier1"],
+                "Jet A 301-1200 GLL": parsed["jet_a_tier2"],
+                "Jet A 1201+ GLL": parsed["jet_a_tier3"],
+                "Handling Fee": parsed["handling"],
                 "Waiver Min Gallons": parsed["waiver_min_gallons"],
-                "Infrastructure Fee ($)": parsed["infra"],
-                "Special Event Fee ($)": parsed["special_event"],
-                "GPU ($)": parsed["gpu"],
-                "Hangar ($)": formatted_hangar,
-                "Lavatory Service ($)": parsed["lav"],
-                "Water Service ($)": parsed["water"]
+                "Infrastructure Fee": parsed["infra"],
+                "Special Event Fee": parsed["special_event"],
+                "GPU": parsed["gpu"],
+                "Hangar": formatted_hangar,
+                "Lavatory Service": parsed["lav"],
+                "Water Service": parsed["water"]
             })
             
             debug_logs.append({
@@ -427,12 +427,12 @@ if "last_records" in st.session_state:
                     for tier in fuel_item.get("priceTiers", []):
                         tier_rows.append({
                             "Service": s_name,
-                            "Retail Price ($)": retail,
+                            "Retail Price": retail,
                             "Tier Name": tier.get("tierName"),
                             "Min GLL": tier.get("minQuantity"),
                             "Max GLL": tier.get("maxQuantity"),
-                            "Tier Price ($)": tier.get("price"),
-                            "Discount ($)": tier.get("discountAmount")
+                            "Tier Price": tier.get("price"),
+                            "Discount": tier.get("discountAmount")
                         })
                 
                 if tier_rows:
