@@ -11,7 +11,7 @@ st.set_page_config(
     layout="wide"
 )
 
-st.title("✈️️ Signature Aviation — Fuel Pricing Array Inspector")
+st.title("✈️ Signature Aviation — Fuel Pricing Array Inspector")
 st.markdown("Extracts and displays live `fuelPricing` and volume tiers directly from Signature's API schema payloads.")
 
 # Default Options & Mapping Constants
@@ -339,6 +339,13 @@ def fetch_live_signature_pricing(stations_list, aircraft_list, date_val):
 
             parsed = extract_signature_pricing(response_json)
 
+            # Format Hangar Value: Display "Call FBO" if N/A or 0.00
+            hangar_val = parsed["hangar"]
+            if hangar_val == "N/A" or hangar_val == "0.00" or not hangar_val:
+                formatted_hangar = "Call FBO"
+            else:
+                formatted_hangar = hangar_val
+
             records.append({
                 "ICAO": clean_icao,
                 "Aircraft Reg": clean_reg,
@@ -354,7 +361,7 @@ def fetch_live_signature_pricing(stations_list, aircraft_list, date_val):
                 "Infrastructure Fee ($)": parsed["infra"],
                 "Special Event Fee ($)": parsed["special_event"],
                 "GPU ($)": parsed["gpu"],
-                "Hangar ($)": parsed["hangar"] if parsed["hangar"] != "0.00" else "Contact FBO",
+                "Hangar ($)": formatted_hangar,
                 "Lavatory Service ($)": parsed["lav"],
                 "Water Service ($)": parsed["water"]
             })
