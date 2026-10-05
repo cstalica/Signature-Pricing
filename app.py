@@ -2,6 +2,7 @@ import streamlit as st
 import requests
 import pandas as pd
 from datetime import datetime
+import re
 
 # Page Configuration
 st.set_page_config(
@@ -19,7 +20,7 @@ ALL_STATIONS = {
     "CYYZ": {"baseId": "YYZ", "baseCode": "YYZ"},
     "CYYC": {"baseId": "YYC", "baseCode": "YYC"},
     "CYVR": {"baseId": "YVR", "baseCode": "YVR"},
-    "CYUL": {"baseId": "YUL", "baseCode": "YUL"},
+    "CYUL": {"baseId": "YUL", "baseCode": "CYUL"},
     "MPTO": {"baseId": "Y47", "baseCode": "PTO"},
     "KVNY": {"baseId": "VNE", "baseCode": "VNY"},
     "SBVT": {"baseId": "VIX", "baseCode": "BVT"},
@@ -110,28 +111,47 @@ enable_debug = st.sidebar.checkbox("Enable Live API Debug Inspector", value=True
 def extract_signature_fees(api_response):
     extracted = {
         "handling": "N/A", "waiver_min_gallons": "N/A", "infra": "N/A",
-        "gpu": "N/A", "hangar": "N/A", "lav": "N/A"
+        "gpu": "N/A", "hangar": "N/A", "lav": "N/A", "water": "N/A"
     }
 
-    data_list = api_response.get("data", []) if isinstance(api_response, dict) else []
-    if not data_list:
-        return extracted
+    # Based on the JSON payload structure where items are directly inside 'data' list
+    items_list = []
+    if isinstance(api_response, dict):
+        raw_data = api_response.get("data", [])
+        if isinstance(raw_data, list):
+            items_list = raw_data
 
-    station_record = data_list[0] if isinstance(data_list, list) and len(data_list) > 0 else {}
-
-    for s_item in station_record.get("serviceFees", []):
-        code = str(s_item.get("serviceCode", "")).upper()
+    for s_item in items_list:
+        if not isinstance(s_item, dict):
+            continue
+        description = str(s_item.get("description", "")).upper()
+        src_code = str(s_item.get("srcProductCode", "")).upper()
         price = s_item.get("customerPrice")
-        if price is not None:
-            val_str = f"{float(price):.2f}"
-            if "HANDLING" in code:
-                extracted["handling"] = val_str
-                if s_item.get("waiverMinGallons"):
-                    extracted["waiver_min_gallons"] = str(s_item.get("waiverMinGallons"))
-            elif "INFRASTRUCTURE" in code: extracted["infra"] = val_str
-            elif "GPU" in code: extracted["gpu"] = val_str
-            elif "HANGAR" in code: extracted["hangar"] = val_str
-            elif "LAV" in code: extracted["lav"] = val_str
+        
+        val_str = "N/A"
+        if price is not None and str(price).strip() != "":
+            try:
+                val_str = f"{float(price):.2f}"
+            except ValueError:
+                val_str = str(price)
+
+        if "HANDLING" in description or "HANDLING" in src_code:
+            extracted["handling"] = val_str
+            details = s_item.get("serviceDetails", "")
+            if details:
+                match = re.search(r'(\d+)\s*(?:US\s*)?Gallon', details, re.IGNORECASE)
+                if match:
+                    extracted["waiver_min_gallons"] = match.group(1)
+        elif "INFRASTRUCTURE" in description or "INFRA" in src_code:
+            extracted["infra"] = val_str
+        elif "GROUND POWER UNIT" in description and "START" not in description:
+            extracted["gpu"] = val_str
+        elif "HANGAR" in description or "HANGER" in src_code:
+            extracted["hangar"] = val_str
+        elif "LAVATORY" in description or "LAV" in src_code:
+            extracted["lav"] = val_str
+        elif "WATER" in description:
+            extracted["water"] = val_str
 
     return extracted
 
@@ -199,7 +219,8 @@ def fetch_live_signature_fees(stations_list, aircraft_list, date_val, debug_mode
                 "Infrastructure Fee": parsed["infra"],
                 "GPU": parsed["gpu"],
                 "Hangar": parsed["hangar"] if parsed["hangar"] != "0.00" else "Call FBO",
-                "Lav Service": parsed["lav"]
+                "Lav Service": parsed["lav"],
+                "Water Service": parsed["water"]
             })
     return records
 
