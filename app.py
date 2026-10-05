@@ -288,6 +288,11 @@ def fetch_live_signature_fees(stations_list, aircraft_list, date_val):
                     pass
 
                 parsed = extract_signature_fees(response_json)
+                
+                # Check if hangar fee is 0.00 or N/A
+                hangar_val = parsed["hangar"]
+                display_hangar = "Call FBO" if hangar_val in ["0.00", "N/A"] else hangar_val
+
                 records.append({
                     "ICAO": clean_icao,
                     "Aircraft Reg": clean_reg,
@@ -296,7 +301,7 @@ def fetch_live_signature_fees(stations_list, aircraft_list, date_val):
                     "Waiver Min GLL": parsed["waiver_min_gallons"],
                     "Infrastructure Fee": parsed["infra"],
                     "GPU": parsed["gpu"],
-                    "Hangar": parsed["hangar"] if parsed["hangar"] != "0.00" else "Call FBO",
+                    "Hangar": display_hangar,
                     "Lav Service": parsed["lav"]
                 })
 
