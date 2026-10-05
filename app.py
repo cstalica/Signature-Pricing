@@ -48,7 +48,7 @@ selected_date = st.sidebar.date_input("Arrival Date", value=datetime.today())
 st.sidebar.markdown("---")
 enable_debug = st.sidebar.checkbox("Enable Live API Debug Inspector", value=True)
 
-# Payload Generator Matched to Live Signature TMB Schema
+# Generator updated with exact TMB handling/fee schedules for N265K / N316K
 def generate_mock_signature_payload(icao, reg, date_str):
     is_fsm = (icao == "FSM")
     is_tmb = (icao == "TMB")
@@ -57,8 +57,8 @@ def generate_mock_signature_payload(icao, reg, date_str):
     if is_tmb:
         retail_jet = 8.39
         t1_price, t1_disc = 6.99, 1.40
-        t2_price, t2_disc = 6.69, 1.70
-        t3_price, t3_disc = 6.39, 2.00
+        t2_price, t2_disc = 6.99, 1.40
+        t3_price, t3_disc = 6.99, 1.40
     elif is_fsm:
         retail_jet = 8.55
         t1_price, t1_disc = 7.69, 0.86
@@ -71,12 +71,12 @@ def generate_mock_signature_payload(icao, reg, date_str):
         t3_price, t3_disc = 8.04, 1.13
 
     if is_tmb:
-        handling_price = 1280.00 if is_heavy else 680.00
+        handling_price = 1140.00 if is_heavy else 680.00
         waiver_gallons = 520 if is_heavy else 310
         infra_price = 36.00
-        gpu_price = 132.68
-        hangar_val = 567.10
-        lav_price = 165.00
+        gpu_price = 160.50 if is_heavy else 132.68
+        hangar_val = 787.52 if is_heavy else 567.10
+        lav_price = 170.00
     elif is_fsm:
         handling_price = 940.00 if is_heavy else 560.00
         waiver_gallons = 520 if is_heavy else 310
