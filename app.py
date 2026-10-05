@@ -65,7 +65,6 @@ def generate_mock_signature_payload(icao, reg, date_str):
         gpu_price = 114.00
         hangar_val = 0.0
         lav_price = 208.05 if is_heavy else 197.10
-        water_price = 92.00
     else:
         handling_price = 2340.00 if is_heavy else 1395.00
         waiver_gallons = 750 if is_heavy else 500
@@ -73,7 +72,6 @@ def generate_mock_signature_payload(icao, reg, date_str):
         gpu_price = 186.00
         hangar_val = 2619.00 if is_heavy else 1878.00
         lav_price = 345.83 if is_heavy else 326.25
-        water_price = 244.69
 
     fuel_pricing = [
         {
@@ -159,12 +157,6 @@ def generate_mock_signature_payload(icao, reg, date_str):
             "serviceName": "Lavatory Service",
             "description": "Lavatory Service",
             "customerPrice": lav_price
-        },
-        {
-            "serviceCode": "WATER",
-            "serviceName": "Potable Water",
-            "description": "Potable Water Service",
-            "customerPrice": water_price
         }
     ]
 
@@ -193,8 +185,7 @@ def extract_signature_pricing(data):
         "special_event": "N/A", 
         "gpu": "N/A",
         "hangar": "N/A",
-        "lav": "N/A",
-        "water": "N/A"
+        "lav": "N/A"
     }
 
     fuel_items = []
@@ -298,9 +289,6 @@ def extract_signature_pricing(data):
         elif "LAV" in svc_code or "lavatory" in full_str or "lav " in full_str:
             if price_val is not None:
                 extracted["lav"] = f"{float(price_val):.2f}"
-        elif "WATER" in svc_code or "water" in full_str:
-            if price_val is not None:
-                extracted["water"] = f"{float(price_val):.2f}"
 
     if isinstance(data, dict):
         if "serviceFees" in data and isinstance(data["serviceFees"], list):
@@ -386,8 +374,7 @@ def fetch_live_signature_pricing(stations_list, aircraft_list, date_val):
                 "Special Event Fee": parsed["special_event"],
                 "GPU": parsed["gpu"],
                 "Hangar": formatted_hangar,
-                "Lavatory Service": parsed["lav"],
-                "Water Service": parsed["water"]
+                "Lav Service": parsed["lav"]
             })
             
             debug_logs.append({
