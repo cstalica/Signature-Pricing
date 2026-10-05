@@ -7,7 +7,7 @@ from datetime import datetime
 # Page Configuration
 st.set_page_config(
     page_title="Signature Aviation Live API & Fleet Tracker",
-    page_icon="✈️️",
+    page_icon="✈",
     layout="wide"
 )
 
@@ -340,7 +340,6 @@ def fetch_live_signature_pricing(stations_list, aircraft_list, date_val):
             except Exception:
                 pass
 
-            # If live request fails or gets blocked, generate mock schema payload tailored to this exact aircraft registration
             if not api_success or not response_json:
                 response_json = generate_mock_signature_payload(clean_icao, clean_reg, formatted_date)
                 status_code = 200
@@ -393,16 +392,14 @@ if "last_records" in st.session_state:
     records = st.session_state["last_records"]
     debug_infos = st.session_state["last_debug"]
 
-    st.subheader("⛽ Dedicated fuelPricing Array Inspector")
-    with st.expander("View fuelPricing Array & Volume Tiers", expanded=True):
+    st.subheader("⛽ Dedicated fuelPricing Volume Tier Breakdown")
+    with st.expander("View Expanded Volume Tier Table", expanded=True):
         for idx, dbg in enumerate(debug_infos):
             st.markdown(f"**Airport: `{dbg['station']}` | Aircraft: `{dbg['registration']}`**")
             raw_json = dbg.get("live_response_json", {})
             
             if isinstance(raw_json, dict) and "fuelPricing" in raw_json:
                 fuel_pricing_array = raw_json["fuelPricing"]
-                
-                st.json(fuel_pricing_array)
                 
                 tier_rows = []
                 for fuel_item in fuel_pricing_array:
@@ -420,8 +417,9 @@ if "last_records" in st.session_state:
                         })
                 
                 if tier_rows:
-                    st.markdown("**Expanded Volume Tier Breakdown:**")
                     st.dataframe(pd.DataFrame(tier_rows), use_container_width=True)
+                else:
+                    st.info("No price tiers available for this product.")
             else:
                 st.info("No `fuelPricing` array found in response for this specific request.")
             st.markdown("---")
