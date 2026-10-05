@@ -1,4 +1,4 @@
-import streamlit as st
+updated_app_code = """import streamlit as st
 import requests
 import pandas as pd
 from datetime import datetime
@@ -158,10 +158,17 @@ MODEL_NUMBER = "0"
 # Sidebar Controls
 st.sidebar.header("Parameters & Configuration")
 
-station_mode = st.sidebar.radio("Airport Selection Mode", ["Single Airport", "All Airports"])
-if station_mode == "Single Airport":
+station_mode = st.sidebar.radio("Airport Selection Mode", ["Select from List", "Type ICAO Code", "All Airports"])
+if station_mode == "Select from List":
     selected_station = st.sidebar.selectbox("Select Airport ICAO", list(ALL_STATIONS.keys()), index=0)
     stations_to_query = [selected_station]
+elif station_mode == "Type ICAO Code":
+    custom_icao = st.sidebar.text_input("Enter Airport ICAO Code (e.g., KTEB, KBOS)", value="").strip().upper()
+    if custom_icao:
+        stations_to_query = [custom_icao]
+    else:
+        st.sidebar.warning("Please enter an ICAO code.")
+        stations_to_query = []
 else:
     stations_to_query = list(ALL_STATIONS.keys())
 
@@ -227,7 +234,14 @@ def fetch_live_signature_fees(stations_list, aircraft_list, date_val):
 
     for icao in stations_list:
         clean_icao = icao.strip().upper()
-        station_info = ALL_STATIONS.get(clean_icao, {"baseId": clean_icao, "baseCode": clean_icao[-3:]})
+        
+        # Look up station in ALL_STATIONS if present; otherwise default to clean_icao & baseCode from ICAO
+        if clean_icao in ALL_STATIONS:
+            station_info = ALL_STATIONS[clean_icao]
+        else:
+            # Fallback for manually typed ICAOs not in preset dictionary
+            base_code = clean_icao[-3:] if len(clean_icao) >= 3 else clean_icao
+            station_info = {"baseId": clean_icao, "baseCode": base_code}
         
         for reg in aircraft_list:
             clean_reg = reg.strip().upper()
@@ -270,19 +284,28 @@ def fetch_live_signature_fees(stations_list, aircraft_list, date_val):
     return records
 
 # Fetch live records from API
-records = fetch_live_signature_fees(stations_to_query, aircraft_to_query, selected_date)
+if stations_to_query:
+    records = fetch_live_signature_fees(stations_to_query, aircraft_to_query, selected_date)
 
-st.subheader("📊 Live FBO Service Fees Table")
-df_results = pd.DataFrame(records)
+    st.subheader("📊 Live FBO Service Fees Table")
+    df_results = pd.DataFrame(records)
 
-# Display table
-st.dataframe(df_results, use_container_width=True, hide_index=True)
+    # Display table
+    st.dataframe(df_results, use_container_width=True, hide_index=True)
 
-# CSV Download Button
-csv_data = df_results.to_csv(index=False).encode('utf-8')
-st.download_button(
-    label="📥 Download Live Fees Table as CSV",
-    data=csv_data,
-    file_name=f"signature_live_service_fees_{selected_date.strftime('%Y%m%d')}.csv",
-    mime="text/csv"
-)
+    # CSV Download Button
+    csv_data = df_results.to_csv(index=False).encode('utf-8')
+    st.download_button(
+        label="📥 Download Live Fees Table as CSV",
+        data=csv_data,
+        file_name=f"signature_live_service_fees_{selected_date.strftime('%Y%m%d')}.csv",
+        mime="text/csv"
+    )
+else:
+    st.info("Please enter or select an airport to load fee data.")
+"""
+
+with open("app.py", "w") as f:
+    f.write(updated_app_code)
+
+print("Updated app.py written with custom text input mode!")
