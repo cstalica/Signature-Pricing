@@ -252,4 +252,19 @@ def fetch_live_signature_pricing(stations_list, aircraft_list, date_val):
     return records
 
 # Always fetch and display current records directly in the main body view
-records = fetch_live_signature_pricing(stations
+records = fetch_live_signature_pricing(stations_to_query, aircraft_to_query, selected_date)
+
+st.subheader("📊 Full Processed Pricing Table")
+df_results = pd.DataFrame(records)
+
+# Display the dataframe
+st.dataframe(df_results, use_container_width=True, hide_index=True)
+
+# CSV Download Button placed directly below the table
+csv_data = df_results.to_csv(index=False).encode('utf-8')
+st.download_button(
+    label="📥 Download Pricing Table as CSV",
+    data=csv_data,
+    file_name=f"signature_fuel_pricing_{selected_date.strftime('%Y%m%d')}.csv",
+    mime="text/csv"
+)
