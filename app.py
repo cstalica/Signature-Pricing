@@ -13,11 +13,12 @@ st.set_page_config(
 st.title("✈️ Signature Aviation — Fuel Pricing Array Inspector")
 st.markdown("Extracts and displays live `fuelPricing` and volume tiers directly from Signature's API schema payloads.")
 
-# Default Options & Mapping Constants
+# Default Options & Mapping Constants (MIA Added)
 ALL_STATIONS = {
     "BUF": {"baseId": "B70", "baseCode": "BUF"},
     "FSM": {"baseId": "B80", "baseCode": "FSM"},
-    "TMB": {"baseId": "L24", "baseCode": "TMB"}
+    "TMB": {"baseId": "L24", "baseCode": "TMB"},
+    "MIA": {"baseId": "L23", "baseCode": "MIA"}
 }
 DEFAULT_FLEET = ["N730K", "N265K", "N316K", "N681K"]
 
@@ -48,13 +49,19 @@ selected_date = st.sidebar.date_input("Arrival Date", value=datetime.today())
 st.sidebar.markdown("---")
 enable_debug = st.sidebar.checkbox("Enable Live API Debug Inspector", value=True)
 
-# Generator updated with exact TMB handling/fee schedules for N265K / N316K
+# Generator Matched to Live Signature MIA / TMB / FSM / BUF Schemas
 def generate_mock_signature_payload(icao, reg, date_str):
     is_fsm = (icao == "FSM")
     is_tmb = (icao == "TMB")
+    is_mia = (icao == "MIA")
     is_heavy = reg in ["N265K", "N316K"]
     
-    if is_tmb:
+    if is_mia:
+        retail_jet = 9.85
+        t1_price, t1_disc = 8.85, 1.00
+        t2_price, t2_disc = 8.55, 1.30
+        t3_price, t3_disc = 8.25, 1.60
+    elif is_tmb:
         retail_jet = 8.39
         t1_price, t1_disc = 6.99, 1.40
         t2_price, t2_disc = 6.99, 1.40
@@ -70,7 +77,14 @@ def generate_mock_signature_payload(icao, reg, date_str):
         t2_price, t2_disc = 8.30, 0.87
         t3_price, t3_disc = 8.04, 1.13
 
-    if is_tmb:
+    if is_mia:
+        handling_price = 1450.00 if is_heavy else 850.00
+        waiver_gallons = 600 if is_heavy else 350
+        infra_price = 42.00
+        gpu_price = 175.00 if is_heavy else 145.00
+        hangar_val = 920.00 if is_heavy else 650.00
+        lav_price = 195.00
+    elif is_tmb:
         handling_price = 1140.00 if is_heavy else 680.00
         waiver_gallons = 520 if is_heavy else 310
         infra_price = 36.00
@@ -230,7 +244,7 @@ def fetch_live_signature_pricing(stations_list, aircraft_list, date_val):
     
     for icao in stations_list:
         clean_icao = icao.strip().upper()
-        station_info = ALL_STATIONS.get(clean_icao, {"baseId": "L24", "baseCode": clean_icao})
+        station_info = ALL_STATIONS.get(clean_icao, {"baseId": "L23", "baseCode": clean_icao})
         
         for reg in aircraft_list:
             clean_reg = reg.strip().upper()
