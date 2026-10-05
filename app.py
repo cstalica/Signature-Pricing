@@ -434,37 +434,5 @@ if "last_records" in st.session_state:
     records = st.session_state["last_records"]
     debug_infos = st.session_state["last_debug"]
 
-    st.subheader("⛽ Dedicated fuelPricing Volume Tier Breakdown")
-    with st.expander("View Expanded Volume Tier Table", expanded=True):
-        for idx, dbg in enumerate(debug_infos):
-            st.markdown(f"**Airport: `{dbg['station']}` | Aircraft: `{dbg['registration']}`**")
-            raw_json = dbg.get("live_response_json", {})
-            
-            if isinstance(raw_json, dict) and "fuelPricing" in raw_json:
-                fuel_pricing_array = raw_json["fuelPricing"]
-                
-                tier_rows = []
-                for fuel_item in fuel_pricing_array:
-                    s_name = fuel_item.get("serviceName", fuel_item.get("serviceCode"))
-                    retail = fuel_item.get("retailPrice", "N/A")
-                    for tier in fuel_item.get("priceTiers", []):
-                        tier_rows.append({
-                            "Service": s_name,
-                            "Retail Price": retail,
-                            "Tier Name": tier.get("tierName"),
-                            "Min GLL": tier.get("minQuantity"),
-                            "Max GLL": tier.get("maxQuantity"),
-                            "Tier Price": tier.get("price"),
-                            "Discount": tier.get("discountAmount")
-                        })
-                
-                if tier_rows:
-                    st.dataframe(pd.DataFrame(tier_rows), use_container_width=True, hide_index=True)
-                else:
-                    st.info("No price tiers available for this product.")
-            else:
-                st.info("No `fuelPricing` array found in response for this specific request.")
-            st.markdown("---")
-
     st.subheader("📊 Full Processed Pricing Table")
     st.dataframe(pd.DataFrame(records), use_container_width=True, hide_index=True)
