@@ -7,7 +7,7 @@ from datetime import datetime
 # Page Configuration
 st.set_page_config(
     page_title="Signature Aviation Live API & Fleet Tracker",
-    page_icon="✈️",
+    page_icon="✈️️",
     layout="wide"
 )
 
@@ -50,19 +50,30 @@ enable_debug = st.sidebar.checkbox("Enable Live API Debug Inspector", value=True
 
 def generate_mock_signature_payload(icao, reg, date_str):
     is_fsm = (icao == "FSM")
+    
+    # Differentiate pricing/fees dynamically based on aircraft registration weight class
     is_heavy = reg in ["N265K", "N316K"]
     
     retail_jet = 8.55 if is_fsm else 8.71
     t1_price = 7.69 if is_fsm else 8.71
     t1_disc = 0.86 if is_fsm else 0.00
     
-    handling_price = 560.00 if is_fsm else (2340.00 if is_heavy else 1395.00)
-    waiver_gallons = 310 if is_fsm else (750 if is_heavy else 500)
-    infra_price = 26.00 if is_fsm else 46.50
-    gpu_price = 114.00 if is_fsm else 186.00
-    hangar_val = 0.0 if is_fsm else (2619.00 if is_heavy else 1878.00)
-    lav_price = 197.10 if is_fsm else (345.83 if is_heavy else 326.25)
-    water_price = 92.00 if is_fsm else 244.69
+    if is_fsm:
+        handling_price = 940.00 if is_heavy else 560.00
+        waiver_gallons = 520 if is_heavy else 310
+        infra_price = 26.00
+        gpu_price = 114.00
+        hangar_val = 0.0
+        lav_price = 208.05 if is_heavy else 197.10
+        water_price = 92.00
+    else:
+        handling_price = 2340.00 if is_heavy else 1395.00
+        waiver_gallons = 750 if is_heavy else 500
+        infra_price = 46.50
+        gpu_price = 186.00
+        hangar_val = 2619.00 if is_heavy else 1878.00
+        lav_price = 345.83 if is_heavy else 326.25
+        water_price = 244.69
 
     fuel_pricing = [
         {
@@ -114,7 +125,7 @@ def generate_mock_signature_payload(icao, reg, date_str):
             "description": "Ramp / Handling Service Fee",
             "customerPrice": handling_price,
             "waiverMinGallons": waiver_gallons,
-            "waiverText": f"Fees will be waived with the purchase of {waiver_gallons} US Gallon (GLL) of fuel."
+            "waiverText": f"Fees will be waived with the purchase of {waiver_gallons} US Gallon [GLL] of fuel."
         },
         {
             "serviceCode": "INFRASTRUCTURE",
@@ -329,7 +340,7 @@ def fetch_live_signature_pricing(stations_list, aircraft_list, date_val):
             except Exception:
                 pass
 
-            # If live request fails or gets blocked by CORS/auth, generate valid mock schema payload
+            # If live request fails or gets blocked, generate mock schema payload tailored to this exact aircraft registration
             if not api_success or not response_json:
                 response_json = generate_mock_signature_payload(clean_icao, clean_reg, formatted_date)
                 status_code = 200
