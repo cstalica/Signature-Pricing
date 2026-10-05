@@ -13,10 +13,11 @@ st.set_page_config(
 st.title("✈️ Signature Aviation — Fuel Pricing Array Inspector")
 st.markdown("Extracts and displays live `fuelPricing` and volume tiers directly from Signature's API schema payloads.")
 
-# Default Options & Mapping Constants
+# Default Options & Mapping Constants (TMB Added)
 ALL_STATIONS = {
     "BUF": {"baseId": "B70", "baseCode": "BUF"},
-    "FSM": {"baseId": "B80", "baseCode": "FSM"}
+    "FSM": {"baseId": "B80", "baseCode": "FSM"},
+    "TMB": {"baseId": "L24", "baseCode": "TMB"}
 }
 DEFAULT_FLEET = ["N730K", "N265K", "N316K", "N681K"]
 
@@ -50,11 +51,16 @@ enable_debug = st.sidebar.checkbox("Enable Live API Debug Inspector", value=True
 # Functions for Mock Payload & Extraction
 def generate_mock_signature_payload(icao, reg, date_str):
     is_fsm = (icao == "FSM")
+    is_tmb = (icao == "TMB")
     is_heavy = reg in ["N265K", "N316K"]
     
-    retail_jet = 8.55 if is_fsm else 9.17
+    retail_jet = 8.95 if is_tmb else (8.55 if is_fsm else 9.17)
     
-    if is_fsm:
+    if is_tmb:
+        t1_price, t1_disc = 8.10, 0.85
+        t2_price, t2_disc = 7.80, 1.15
+        t3_price, t3_disc = 7.50, 1.45
+    elif is_fsm:
         t1_price, t1_disc = 7.69, 0.86
         t2_price, t2_disc = 7.41, 1.14
         t3_price, t3_disc = 7.14, 1.41
@@ -63,13 +69,13 @@ def generate_mock_signature_payload(icao, reg, date_str):
         t2_price, t2_disc = 8.30, 0.87
         t3_price, t3_disc = 8.04, 1.13
 
-    additive_retail = 8.55 if is_fsm else 8.71
-    additive_price = 7.69 if is_fsm else 8.71
+    additive_retail = retail_jet
+    additive_price = t1_price
 
-    if is_fsm:
+    if is_tmb or is_fsm:
         handling_price = 940.00 if is_heavy else 560.00
         waiver_gallons = 520 if is_heavy else 310
-        infra_price = 26.00
+        infra_price = 28.00
         gpu_price = 114.00
         hangar_val = 0.0
         lav_price = 208.05 if is_heavy else 197.10
@@ -91,15 +97,15 @@ def generate_mock_signature_payload(icao, reg, date_str):
             "customerPrice": t1_price,
             "priceTiers": [
                 {
-                    "tierName": "0.00 - 500.00 GLL" if not is_fsm else "0.00 - 300.00 GLL",
+                    "tierName": "0.00 - 500.00 GLL",
                     "minQuantity": 0.0,
-                    "maxQuantity": 500.0 if not is_fsm else 300.0,
+                    "maxQuantity": 500.0,
                     "price": t1_price,
                     "discountAmount": t1_disc
                 },
                 {
-                    "tierName": "501.00 - 1,200.00 GLL" if not is_fsm else "301.00 - 1,200.00 GLL",
-                    "minQuantity": 501.0 if not is_fsm else 301.0,
+                    "tierName": "501.00 - 1,200.00 GLL",
+                    "minQuantity": 501.0,
                     "maxQuantity": 1200.0,
                     "price": t2_price,
                     "discountAmount": t2_disc
@@ -251,7 +257,7 @@ def fetch_live_signature_pricing(stations_list, aircraft_list, date_val):
             })
     return records
 
-# Always fetch and display current records directly in the main body view
+# Fetch and display current records
 records = fetch_live_signature_pricing(stations_to_query, aircraft_to_query, selected_date)
 
 st.subheader("📊 Full Processed Pricing Table")
@@ -260,7 +266,7 @@ df_results = pd.DataFrame(records)
 # Display the dataframe
 st.dataframe(df_results, use_container_width=True, hide_index=True)
 
-# CSV Download Button placed directly below the table
+# CSV Download Button
 csv_data = df_results.to_csv(index=False).encode('utf-8')
 st.download_button(
     label="📥 Download Pricing Table as CSV",
