@@ -3,7 +3,6 @@ import subprocess
 import streamlit as st
 import pandas as pd
 from datetime import datetime
-from bs4 import BeautifulSoup
 
 # Ensure Playwright browser binaries are installed on Streamlit Community Cloud
 try:
@@ -54,7 +53,7 @@ selected_date = st.sidebar.date_input("Arrival Date", value=datetime.today())
 
 
 def scrape_signature_data(icao, aircraft_list, target_date):
-    """Launches Playwright Chromium to intercept network payloads and extract rendered DOM pricing."""
+    """Launches Playwright Chromium, triggers modal rendering, and parses active DOM elements."""
     station_info = ALL_STATIONS.get(icao, ALL_STATIONS["OPF"])
     formatted_date = target_date.strftime("%m/%d/%Y")
     records = []
@@ -72,10 +71,11 @@ def scrape_signature_data(icao, aircraft_list, target_date):
             page.goto(station_info["fboUrl"], wait_until="domcontentloaded", timeout=30000)
             page.wait_for_timeout(3000)
 
-            # Open pricing modal if 'View Prices' button is visible
-            if page.is_visible("text=View Prices"):
-                page.click("text=View Prices")
-                page.wait_for_timeout(2000)
+            # Click 'View Prices' button to open modal overlay if closed
+            view_prices_btn = page.locator("text='View Prices'").first
+            if view_prices_btn.is_visible():
+                view_prices_btn.click()
+                page.wait_for_timeout(2500)
 
             for reg in aircraft_list:
                 clean_reg = reg.strip().upper()
@@ -92,54 +92,74 @@ def scrape_signature_data(icao, aircraft_list, target_date):
                     "Lav Service": "N/A"
                 }
 
-                # Update tail number if input field is visible
-                input_field = page.query_selector("input[placeholder*='Aircraft Registration']") or page.query_selector("input[value*='N']")
-                if input_field:
-                    input_field.fill(clean_reg)
-                    input_field.press("Enter")
-                    page.wait_for_timeout(2500)
+                # Update registration input if field is present in modal
+                reg_input = page.locator("input[placeholder*='Aircraft Registration']").first
+                if reg_input.is_visible():
+                    reg_input.fill(clean_reg)
+                    
+                    # Click 'View' button or press Enter to trigger update
+                    view_btn = page.locator("button:has-text('View')").first
+                    if view_btn.is_visible():
+                        view_btn.click()
+                    else:
+                        reg_input.press("Enter")
+                    page.wait_for_timeout(3000)
 
-                # Extract rendered page DOM
-                content = page.content()
-                soup = BeautifulSoup(content, "html.parser")
+                # Extract Jet A Prices using Playwright locators
+                jet_a_card = page.locator("div").filter(has_text="JET A").filter(has_text="6.").first
+                if not jet_a_card.is_visible():
+                    jet_a_card = page.locator("div").filter(has_text="JET A").first
 
-                # Parse Jet A Pricing
-                jet_a_card = soup.find(lambda tag: tag.name == "div" and "JET A" in tag.text.upper() and ("6." in tag.text or "7." in tag.text or "8." in tag.text or "9." in tag.text or "10." in tag.text or "11." in tag.text))
-                if jet_a_card:
-                    card_text = jet_a_card.get_text()
-                    prices = [w.strip() for w in card_text.split() if w.strip().replace(".", "").isdigit()]
-                    if len(prices) >= 2:
-                        data["Contract Jet A"] = f"${prices[0]}"
-                        data["Retail Jet A"] = f"${prices[1]}"
-                    elif len(prices) == 1:
-                        data["Contract Jet A"] = f"${prices[0]}"
+                if jet_a_card.is_visible():
+                    card_text = jet_a_card.inner_text()
+                    lines = [line.strip() for line in card_text.split("\n") if line.strip()]
+                    nums = [l.replace("$", "") for l in lines if l.replace(".", "").isdigit()]
+                    if len(nums) >= 2:
+                        data["Contract Jet A"] = f"${nums[0]}"
+                        data["Retail Jet A"] = f"${nums[1]}"
+                    elif len(nums) == 1:
+                        data["Contract Jet A"] = f"${nums[0]}"
 
-                # Parse Handling Fee & Waiver
-                handling_node = soup.find(text=lambda t: t and "Handling Fee" in t)
-                if handling_node:
-                    parent = handling_node.find_parent("div")
-                    if parent:
-                        parent_text = parent.get_text()
-                        for token in parent_text.split():
-                            clean_token = token.replace(",", "").replace("$", "")
-                            if clean_token.replace(".", "").isdigit() and len(clean_token) >= 3:
-                                data["Handling Fee"] = f"${clean_token}"
-                                break
-                        if "waived with" in parent_text.lower():
-                            words = parent_text.lower().split("waived with")[1].split()
-                            data["Waiver Min Fuel"] = f"{words[1]} {words[2]}" if len(words) >= 3 else "See Terms"
+                # Extract Handling Fee
+                handling_card = page.locator("div").filter(has_text="Handling Fee").last
+                if handling_card.is_visible():
+                    txt = handling_card.inner_text()
+                    for word in txt.split():
+                        clean = word.replace(",", "").replace("$", "")
+                        if clean.replace(".", "").isdigit() and len(clean) >= 3:
+                            data["Handling Fee"] = f"${clean}"
+                            break
+                    if "waived with" in txt.lower():
+                        parts = txt.lower().split("waived with")[1].split()
+                        if len(parts) >= 3:
+                            data["Waiver Min Fuel"] = f"{parts[1]} {parts[2].upper()}"
 
-                # Parse Ancillaries
-                for fee_key, field_name in [("Infrastructure Fee", "Infrastructure Fee"), ("Ground Power Unit", "GPU"), ("Lavatory Service", "Lav Service")]:
-                    node = soup.find(text=lambda t: t and fee_key in t)
-                    if node:
-                        p_div = node.find_parent("div")
-                        if p_div:
-                            for token in p_div.get_text().split():
-                                clean_token = token.replace(",", "").replace("$", "")
-                                if clean_token.replace(".", "").isdigit():
-                                    data[field_name] = f"${clean_token}"
-                                    break
+                # Extract Infrastructure Fee
+                infra_card = page.locator("div").filter(has_text="Infrastructure Fee").last
+                if infra_card.is_visible():
+                    for word in infra_card.inner_text().split():
+                        clean = word.replace(",", "").replace("$", "")
+                        if clean.replace(".", "").isdigit():
+                            data["Infrastructure Fee"] = f"${clean}"
+                            break
+
+                # Extract Ground Power Unit (GPU)
+                gpu_card = page.locator("div").filter(has_text="Ground Power Unit").first
+                if gpu_card.is_visible():
+                    for word in gpu_card.inner_text().split():
+                        clean = word.replace(",", "").replace("$", "")
+                        if clean.replace(".", "").isdigit():
+                            data["GPU"] = f"${clean}"
+                            break
+
+                # Extract Lavatory Service
+                lav_card = page.locator("div").filter(has_text="Lavatory Service").last
+                if lav_card.is_visible():
+                    for word in lav_card.inner_text().split():
+                        clean = word.replace(",", "").replace("$", "")
+                        if clean.replace(".", "").isdigit():
+                            data["Lav Service"] = f"${clean}"
+                            break
 
                 records.append(data)
 
