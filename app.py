@@ -436,7 +436,7 @@ if "last_records" in st.session_state:
                         })
                 
                 if tier_rows:
-                    st.dataframe(pd.DataFrame(tier_rows), use_container_width=True)
+                    st.dataframe(pd.DataFrame(tier_rows), use_container_width=True, hide_index=True)
                 else:
                     st.info("No price tiers available for this product.")
             else:
@@ -444,4 +444,4 @@ if "last_records" in st.session_state:
             st.markdown("---")
 
     st.subheader("📊 Full Processed Pricing Table")
-    st.dataframe(pd.DataFrame(records), use_container_width=True)
+    st.dataframe(pd.DataFrame(records), use_container_width=True, hide_index=True)
