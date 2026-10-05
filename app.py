@@ -54,7 +54,6 @@ if "last_selection_state" not in st.session_state:
     st.session_state["last_selection_state"] = current_selection_state
 elif st.session_state["last_selection_state"] != current_selection_state:
     st.session_state["last_selection_state"] = current_selection_state
-    # Automatically clear old cached records when selections change
     if "last_records" in st.session_state:
         del st.session_state["last_records"]
     if "last_debug" in st.session_state:
@@ -79,12 +78,13 @@ def generate_mock_signature_payload(icao, reg, date_str):
         hangar_val = 0.0
         lav_price = 208.05 if is_heavy else 197.10
     else:
-        handling_price = 1560.00 if is_heavy else 1395.00
-        waiver_gallons = 520 if is_heavy else 500
+        # BUF differentiation between heavy and light fleet aircraft
+        handling_price = 1560.00 if is_heavy else 930.00
+        waiver_gallons = 520 if is_heavy else 310
         infra_price = 31.00
         gpu_price = 124.00
-        hangar_val = 1746.00 if is_heavy else 1450.00
-        lav_price = 230.55 if is_heavy else 210.00
+        hangar_val = 1746.00 if is_heavy else 1252.00
+        lav_price = 230.55 if is_heavy else 217.50
 
     fuel_pricing = [
         {
@@ -400,14 +400,12 @@ def fetch_live_signature_pricing(stations_list, aircraft_list, date_val):
     
     return records, debug_logs
 
-# Automatically fetch data on load or when parameters update
 if "last_records" not in st.session_state:
     with st.spinner("Processing API Data..."):
         records, debug_infos = fetch_live_signature_pricing(stations_to_query, aircraft_to_query, selected_date)
         st.session_state["last_records"] = records
         st.session_state["last_debug"] = debug_infos
 
-# Display data from session state
 if "last_records" in st.session_state:
     records = st.session_state["last_records"]
     debug_infos = st.session_state["last_debug"]
