@@ -11,7 +11,7 @@ st.set_page_config(
     layout="wide"
 )
 
-st.title("✈️ Signature Aviation — Fuel Pricing Array Inspector")
+st.title("✈️️ Signature Aviation — Fuel Pricing Array Inspector")
 st.markdown("Extracts and displays live `fuelPricing` and volume tiers directly from Signature's API schema payloads.")
 
 # Default Options & Mapping Constants
