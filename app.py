@@ -20,7 +20,7 @@ st.set_page_config(
 )
 
 st.title("✈️ Signature Aviation — Live API & FBO Inspector")
-st.markdown("Queries live Signature FBO rate schedules using Playwright browser automation.")
+st.markdown("Queries live Signature FBO rate schedules via Playwright network request interception.")
 
 # Station Mappings
 ALL_STATIONS = {
@@ -52,119 +52,154 @@ else:
 selected_date = st.sidebar.date_input("Arrival Date", value=datetime.today())
 
 
+def parse_api_json_payload(json_data):
+    """Parses raw Signature REST API JSON payload directly."""
+    extracted = {
+        "Retail Jet A": "N/A",
+        "Contract Jet A": "N/A",
+        "Handling Fee": "N/A",
+        "Waiver Min Fuel": "N/A",
+        "Infrastructure Fee": "N/A",
+        "GPU": "N/A",
+        "Lav Service": "N/A"
+    }
+    
+    if not isinstance(json_data, dict):
+        return extracted
+
+    payload = json_data.get("data", json_data)
+    if isinstance(payload, dict) and "result" in payload:
+        payload = payload["result"]
+
+    # Extract Fuel Pricing
+    fuel_items = payload.get("fuelPricing", payload.get("fuelPrices", []))
+    for item in fuel_items:
+        name = str(item.get("serviceName", item.get("name", ""))).upper()
+        if "JET A" in name and "ADDITIVE" not in name:
+            retail = item.get("retailPrice", item.get("retail"))
+            cust = item.get("customerPrice", item.get("price"))
+            if retail is not None:
+                extracted["Retail Jet A"] = f"${float(retail):.2f}"
+            if cust is not None:
+                extracted["Contract Jet A"] = f"${float(cust):.2f}"
+            break
+
+    # Extract Service Fees
+    service_items = payload.get("serviceFees", payload.get("services", []))
+    for s in service_items:
+        code = str(s.get("serviceCode", s.get("code", ""))).upper()
+        name = str(s.get("serviceName", s.get("name", ""))).upper()
+        price = s.get("customerPrice", s.get("price", s.get("amount")))
+        
+        if price is not None:
+            val_str = f"${float(price):.2f}"
+            if "HANDLING" in code or "HANDLING" in name:
+                extracted["Handling Fee"] = val_str
+                waiver = s.get("waiverMinGallons", s.get("waiverGallons"))
+                if waiver:
+                    extracted["Waiver Min Fuel"] = f"{waiver} gal"
+            elif "INFRASTRUCTURE" in code or "INFRASTRUCTURE" in name:
+                extracted["Infrastructure Fee"] = val_str
+            elif "GPU" in code or "GROUND POWER" in name:
+                extracted["GPU"] = val_str
+            elif "LAV" in code or "LAVATORY" in name:
+                extracted["Lav Service"] = val_str
+
+    return extracted
+
+
 def scrape_signature_data(icao, aircraft_list, target_date):
-    """Launches Playwright Chromium, triggers modal rendering, and parses active DOM elements."""
+    """Launches Playwright Chromium with Stealth flags and intercepts raw API JSON payloads."""
     station_info = ALL_STATIONS.get(icao, ALL_STATIONS["OPF"])
     formatted_date = target_date.strftime("%m/%d/%Y")
     records = []
 
     with sync_playwright() as p:
-        browser = p.chromium.launch(headless=True)
+        # Launch Chromium with anti-bot detection flags
+        browser = p.chromium.launch(
+            headless=True,
+            args=[
+                "--disable-blink-features=AutomationControlled",
+                "--no-sandbox",
+                "--disable-setuid-sandbox"
+            ]
+        )
         context = browser.new_context(
-            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-            viewport={"width": 1280, "height": 800}
+            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+            viewport={"width": 1366, "height": 768}
         )
         page = context.new_page()
 
+        # Capture intercepted API payloads
+        captured_payloads = {}
+
+        def handle_response(response):
+            if "pricing" in response.url or "discount" in response.url:
+                try:
+                    if response.status == 200:
+                        body = response.json()
+                        captured_payloads[response.url] = body
+                except Exception:
+                    pass
+
+        page.on("response", handle_response)
+
         try:
-            # Navigate to base FBO URL
+            # Navigate to station page
             page.goto(station_info["fboUrl"], wait_until="domcontentloaded", timeout=30000)
             page.wait_for_timeout(3000)
 
-            # Click 'View Prices' button to open modal overlay if closed
-            view_prices_btn = page.locator("text='View Prices'").first
+            # Trigger pricing modal
+            view_prices_btn = page.get_by_role("button", name="View Prices")
+            if not view_prices_btn.is_visible():
+                view_prices_btn = page.locator("text='View Prices'").first
+
             if view_prices_btn.is_visible():
                 view_prices_btn.click()
-                page.wait_for_timeout(2500)
+                page.wait_for_timeout(3000)
 
             for reg in aircraft_list:
                 clean_reg = reg.strip().upper()
-                data = {
-                    "ICAO": icao,
-                    "Aircraft Reg": clean_reg,
-                    "Date": formatted_date,
-                    "Retail Jet A": "N/A",
-                    "Contract Jet A": "N/A",
-                    "Handling Fee": "N/A",
-                    "Waiver Min Fuel": "N/A",
-                    "Infrastructure Fee": "N/A",
-                    "GPU": "N/A",
-                    "Lav Service": "N/A"
-                }
 
-                # Update registration input if field is present in modal
+                # Input aircraft registration into modal field
                 reg_input = page.locator("input[placeholder*='Aircraft Registration']").first
+                if not reg_input.is_visible():
+                    reg_input = page.locator("input[type='text']").first
+
                 if reg_input.is_visible():
                     reg_input.fill(clean_reg)
                     
-                    # Click 'View' button or press Enter to trigger update
-                    view_btn = page.locator("button:has-text('View')").first
+                    # Submit query
+                    view_btn = page.get_by_role("button", name="View")
                     if view_btn.is_visible():
                         view_btn.click()
                     else:
                         reg_input.press("Enter")
-                    page.wait_for_timeout(3000)
 
-                # Extract Jet A Prices using Playwright locators
-                jet_a_card = page.locator("div").filter(has_text="JET A").filter(has_text="6.").first
-                if not jet_a_card.is_visible():
-                    jet_a_card = page.locator("div").filter(has_text="JET A").first
+                    page.wait_for_timeout(3500)
 
-                if jet_a_card.is_visible():
-                    card_text = jet_a_card.inner_text()
-                    lines = [line.strip() for line in card_text.split("\n") if line.strip()]
-                    nums = [l.replace("$", "") for l in lines if l.replace(".", "").isdigit()]
-                    if len(nums) >= 2:
-                        data["Contract Jet A"] = f"${nums[0]}"
-                        data["Retail Jet A"] = f"${nums[1]}"
-                    elif len(nums) == 1:
-                        data["Contract Jet A"] = f"${nums[0]}"
+                # Parse intercepted JSON responses if captured
+                parsed_result = None
+                for url, json_body in captured_payloads.items():
+                    if clean_reg.lower() in url.lower() or "pricing" in url:
+                        parsed_result = parse_api_json_payload(json_body)
+                        break
 
-                # Extract Handling Fee
-                handling_card = page.locator("div").filter(has_text="Handling Fee").last
-                if handling_card.is_visible():
-                    txt = handling_card.inner_text()
-                    for word in txt.split():
-                        clean = word.replace(",", "").replace("$", "")
-                        if clean.replace(".", "").isdigit() and len(clean) >= 3:
-                            data["Handling Fee"] = f"${clean}"
-                            break
-                    if "waived with" in txt.lower():
-                        parts = txt.lower().split("waived with")[1].split()
-                        if len(parts) >= 3:
-                            data["Waiver Min Fuel"] = f"{parts[1]} {parts[2].upper()}"
+                if not parsed_result:
+                    parsed_result = {
+                        "Retail Jet A": "N/A", "Contract Jet A": "N/A", "Handling Fee": "N/A",
+                        "Waiver Min Fuel": "N/A", "Infrastructure Fee": "N/A", "GPU": "N/A", "Lav Service": "N/A"
+                    }
 
-                # Extract Infrastructure Fee
-                infra_card = page.locator("div").filter(has_text="Infrastructure Fee").last
-                if infra_card.is_visible():
-                    for word in infra_card.inner_text().split():
-                        clean = word.replace(",", "").replace("$", "")
-                        if clean.replace(".", "").isdigit():
-                            data["Infrastructure Fee"] = f"${clean}"
-                            break
-
-                # Extract Ground Power Unit (GPU)
-                gpu_card = page.locator("div").filter(has_text="Ground Power Unit").first
-                if gpu_card.is_visible():
-                    for word in gpu_card.inner_text().split():
-                        clean = word.replace(",", "").replace("$", "")
-                        if clean.replace(".", "").isdigit():
-                            data["GPU"] = f"${clean}"
-                            break
-
-                # Extract Lavatory Service
-                lav_card = page.locator("div").filter(has_text="Lavatory Service").last
-                if lav_card.is_visible():
-                    for word in lav_card.inner_text().split():
-                        clean = word.replace(",", "").replace("$", "")
-                        if clean.replace(".", "").isdigit():
-                            data["Lav Service"] = f"${clean}"
-                            break
-
-                records.append(data)
+                records.append({
+                    "ICAO": icao,
+                    "Aircraft Reg": clean_reg,
+                    "Date": formatted_date,
+                    **parsed_result
+                })
 
         except Exception as e:
-            st.error(f"Playwright Automation Error: {e}")
+            st.error(f"Playwright Browser Error: {e}")
             for reg in aircraft_list:
                 records.append({
                     "ICAO": icao, "Aircraft Reg": reg, "Date": formatted_date,
@@ -177,17 +212,15 @@ def scrape_signature_data(icao, aircraft_list, target_date):
     return records
 
 
-# Render App Results
-with st.spinner(f"Running automated browser session for {selected_station_icao}..."):
+# Render Streamlit App
+with st.spinner(f"Intercepting live API payload for {selected_station_icao}..."):
     records = scrape_signature_data(selected_station_icao, aircraft_to_query, selected_date)
 
-st.subheader(f"📊 Live Scraped Data — {selected_station_icao}")
+st.subheader(f"📊 Live API Data Table — {selected_station_icao}")
 df_results = pd.DataFrame(records)
-
-# Display Table
 st.dataframe(df_results, use_container_width=True, hide_index=True)
 
-# Export Button
+# Export Option
 csv_data = df_results.to_csv(index=False).encode('utf-8')
 st.download_button(
     label=f"📥 Download {selected_station_icao} Pricing CSV",
