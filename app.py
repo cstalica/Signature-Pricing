@@ -13,7 +13,7 @@ st.set_page_config(
 st.title("✈️ Signature Aviation — Fuel Pricing Array Inspector")
 st.markdown("Extracts and displays live `fuelPricing` and volume tiers directly from Signature's API schema payloads.")
 
-# Default Options & Mapping Constants (TMB Added)
+# Default Options & Mapping Constants
 ALL_STATIONS = {
     "BUF": {"baseId": "B70", "baseCode": "BUF"},
     "FSM": {"baseId": "B80", "baseCode": "FSM"},
@@ -48,34 +48,39 @@ selected_date = st.sidebar.date_input("Arrival Date", value=datetime.today())
 st.sidebar.markdown("---")
 enable_debug = st.sidebar.checkbox("Enable Live API Debug Inspector", value=True)
 
-# Functions for Mock Payload & Extraction
+# Accurate Mock Payload Generator with Correct TMB Pricing
 def generate_mock_signature_payload(icao, reg, date_str):
     is_fsm = (icao == "FSM")
     is_tmb = (icao == "TMB")
     is_heavy = reg in ["N265K", "N316K"]
     
-    retail_jet = 8.95 if is_tmb else (8.55 if is_fsm else 9.17)
-    
     if is_tmb:
-        t1_price, t1_disc = 8.10, 0.85
-        t2_price, t2_disc = 7.80, 1.15
-        t3_price, t3_disc = 7.50, 1.45
+        retail_jet = 8.39
+        t1_price, t1_disc = 8.39, 0.00
+        t2_price, t2_disc = 7.95, 0.44
+        t3_price, t3_disc = 7.60, 0.79
     elif is_fsm:
+        retail_jet = 8.55
         t1_price, t1_disc = 7.69, 0.86
         t2_price, t2_disc = 7.41, 1.14
         t3_price, t3_disc = 7.14, 1.41
     else:
+        retail_jet = 9.17
         t1_price, t1_disc = 8.61, 0.56
         t2_price, t2_disc = 8.30, 0.87
         t3_price, t3_disc = 8.04, 1.13
 
-    additive_retail = retail_jet
-    additive_price = t1_price
-
-    if is_tmb or is_fsm:
+    if is_tmb:
+        handling_price = 1280.00 if is_heavy else 680.00
+        waiver_gallons = 520 if is_heavy else 310
+        infra_price = 36.00
+        gpu_price = 132.68
+        hangar_val = 567.10
+        lav_price = 165.00
+    elif is_fsm:
         handling_price = 940.00 if is_heavy else 560.00
         waiver_gallons = 520 if is_heavy else 310
-        infra_price = 28.00
+        infra_price = 26.00
         gpu_price = 114.00
         hangar_val = 0.0
         lav_price = 208.05 if is_heavy else 197.10
@@ -210,7 +215,7 @@ def fetch_live_signature_pricing(stations_list, aircraft_list, date_val):
     
     for icao in stations_list:
         clean_icao = icao.strip().upper()
-        station_info = ALL_STATIONS.get(clean_icao, {"baseId": "B70", "baseCode": clean_icao})
+        station_info = ALL_STATIONS.get(clean_icao, {"baseId": "L24", "baseCode": clean_icao})
         
         for reg in aircraft_list:
             clean_reg = reg.strip().upper()
