@@ -78,8 +78,8 @@ def generate_mock_signature_payload(icao, reg, date_str):
     fuel_pricing = [
         {
             "serviceCode": "JET-A",
-            "serviceName": "Jet A (with additive)",
-            "productName": "Jet A (with additive)",
+            "serviceName": "Jet A",
+            "productName": "Jet A",
             "unitOfMeasure": "GLL",
             "retailPrice": retail_jet,
             "customerPrice": t1_price,
@@ -106,6 +106,15 @@ def generate_mock_signature_payload(icao, reg, date_str):
                     "discountAmount": round(t1_disc + 0.55, 2)
                 }
             ]
+        },
+        {
+            "serviceCode": "JET-A-ADDITIVE",
+            "serviceName": "Jet A (with additive)",
+            "productName": "Jet A (with additive)",
+            "unitOfMeasure": "GLL",
+            "retailPrice": retail_jet,
+            "customerPrice": t1_price,
+            "priceTiers": []
         },
         {
             "serviceCode": "100LL",
@@ -173,7 +182,7 @@ def generate_mock_signature_payload(icao, reg, date_str):
 def extract_signature_pricing(data):
     extracted = {
         "service_code": "JET-A",
-        "service_name": "Jet A (with additive)",
+        "service_name": "Jet A",
         "retail_price": "N/A",
         "jet_a_tier1": "N/A",
         "jet_a_tier2": "N/A",
@@ -188,50 +197,72 @@ def extract_signature_pricing(data):
         "water": "N/A"
     }
 
-    def process_fuel_item(item):
+    fuel_items = []
+    if isinstance(data, dict) and "fuelPricing" in data and isinstance(data["fuelPricing"], list):
+        fuel_items = data["fuelPricing"]
+
+    # Filter out avgas
+    valid_fuel_items = []
+    for item in fuel_items:
         if not isinstance(item, dict):
-            return
-        
+            continue
         svc_code = str(item.get("serviceCode", "")).upper()
         svc_name = str(item.get("serviceName", "")).lower()
         prod_name = str(item.get("productName", "")).lower()
         full_str = f"{svc_code} {svc_name} {prod_name}"
 
         if "100ll" in full_str or "avgas" in full_str:
-            return
+            continue
+        valid_fuel_items.append(item)
 
-        if "JET-A" in svc_code or "jet" in full_str or "additive" in full_str or not svc_code:
-            if item.get("serviceCode"):
-                extracted["service_code"] = str(item.get("serviceCode"))
-            if item.get("serviceName"):
-                extracted["service_name"] = str(item.get("serviceName"))
+    # If both Jet A and Jet A (with additive) exist, select strictly plain Jet A
+    target_fuel_item = None
+    for item in valid_fuel_items:
+        s_name = str(item.get("serviceName", "")).lower()
+        p_name = str(item.get("productName", "")).lower()
+        if "additive" not in s_name and "additive" not in p_name:
+            target_fuel_item = item
+            break
+    
+    # Fallback to the first valid fuel item if plain Jet A isn't specifically matched
+    if not target_fuel_item and valid_fuel_items:
+        target_fuel_item = valid_fuel_items[0]
 
-            retail_val = item.get("retailPrice") or item.get("retail_price") or item.get("basePrice")
-            if retail_val is not None:
-                extracted["retail_price"] = f"{float(retail_val):.2f}"
+    def process_fuel_item(item):
+        if item.get("serviceCode"):
+            extracted["service_code"] = str(item.get("serviceCode"))
+        if item.get("serviceName"):
+            extracted["service_name"] = str(item.get("serviceName"))
 
-            tiers = item.get("priceTiers") or item.get("tiers") or item.get("volumeTiers")
-            if isinstance(tiers, list) and len(tiers) > 0:
-                sorted_tiers = sorted(
-                    [t for t in tiers if isinstance(t, dict) and ("price" in t or "customerPrice" in t)],
-                    key=lambda x: x.get("minQuantity", 0)
-                )
-                if len(sorted_tiers) >= 1:
-                    t1_price = sorted_tiers[0].get("price") or sorted_tiers[0].get("customerPrice")
-                    extracted["jet_a_tier1"] = f"{float(t1_price):.2f}"
-                if len(sorted_tiers) >= 2:
-                    t2_price = sorted_tiers[1].get("price") or sorted_tiers[1].get("customerPrice")
-                    extracted["jet_a_tier2"] = f"{float(t2_price):.2f}"
-                if len(sorted_tiers) >= 3:
-                    t3_price = sorted_tiers[2].get("price") or sorted_tiers[2].get("customerPrice")
-                    extracted["jet_a_tier3"] = f"{float(t3_price):.2f}"
-            else:
-                cust_price = item.get("customerPrice") or item.get("price") or item.get("discountedPrice")
-                if cust_price is not None:
-                    extracted["jet_a_tier1"] = f"{float(cust_price):.2f}"
-                
-                if extracted["retail_price"] == "N/A" and cust_price is not None:
-                    extracted["retail_price"] = f"{float(cust_price):.2f}"
+        retail_val = item.get("retailPrice") or item.get("retail_price") or item.get("basePrice")
+        if retail_val is not None:
+            extracted["retail_price"] = f"{float(retail_val):.2f}"
+
+        tiers = item.get("priceTiers") or item.get("tiers") or item.get("volumeTiers")
+        if isinstance(tiers, list) and len(tiers) > 0:
+            sorted_tiers = sorted(
+                [t for t in tiers if isinstance(t, dict) and ("price" in t or "customerPrice" in t)],
+                key=lambda x: x.get("minQuantity", 0)
+            )
+            if len(sorted_tiers) >= 1:
+                t1_price = sorted_tiers[0].get("price") or sorted_tiers[0].get("customerPrice")
+                extracted["jet_a_tier1"] = f"{float(t1_price):.2f}"
+            if len(sorted_tiers) >= 2:
+                t2_price = sorted_tiers[1].get("price") or sorted_tiers[1].get("customerPrice")
+                extracted["jet_a_tier2"] = f"{float(t2_price):.2f}"
+            if len(sorted_tiers) >= 3:
+                t3_price = sorted_tiers[2].get("price") or sorted_tiers[2].get("customerPrice")
+                extracted["jet_a_tier3"] = f"{float(t3_price):.2f}"
+        else:
+            cust_price = item.get("customerPrice") or item.get("price") or item.get("discountedPrice")
+            if cust_price is not None:
+                extracted["jet_a_tier1"] = f"{float(cust_price):.2f}"
+            
+            if extracted["retail_price"] == "N/A" and cust_price is not None:
+                extracted["retail_price"] = f"{float(cust_price):.2f}"
+
+    if target_fuel_item:
+        process_fuel_item(target_fuel_item)
 
     def process_fee_item(item):
         if not isinstance(item, dict):
@@ -275,9 +306,6 @@ def extract_signature_pricing(data):
                 extracted["water"] = f"{float(price_val):.2f}"
 
     if isinstance(data, dict):
-        if "fuelPricing" in data and isinstance(data["fuelPricing"], list):
-            for f_item in data["fuelPricing"]:
-                process_fuel_item(f_item)
         if "serviceFees" in data and isinstance(data["serviceFees"], list):
             for s_item in data["serviceFees"]:
                 process_fee_item(s_item)
